@@ -1,9 +1,9 @@
 # aruw-sim: plan and hand-off notes
 
 This is the plan the cloud session worked from, with its progress notes, copied
-here so a local session can pick up where it stopped. "Progress, second
-checkpoint" below is the current state; everything under it that isn't marked
-done is still to do.
+here so a local session can pick up where it stopped. "Progress, third
+checkpoint" below is the current state (it supersedes the second); everything
+under it that isn't marked done is still to do. The README has the commands.
 
 ## Setting up a machine to continue
 
@@ -132,6 +132,146 @@ What you decided:
   - `scripts/` (`build.sh`, `run.sh`, `smoke.sh`, `gaps.sh`, `compare.py`), `.vscode`, the README;
   - moving `vision_link` into the umbrella;
   - the referee game and the arena, once your RMUL rules arrive.
+
+## Progress, third checkpoint (local session, 2026-11-18; resume from here)
+
+**The sentry runs end to end on both backends:** the hub, the patched
+firmware and otto, as separate processes, in lockstep. `scripts/smoke.sh`
+checks it, 30 sim s per backend (results below).
+
+### Done (all committed and pushed)
+
+- **aruw-sim** `main`: `scripts/build.sh`, `run.sh`, `smoke.sh`, `gaps.sh`,
+  `compare.py` (repo-relative now; `run.sh --compare`), `dev.sh`, `gdb.sh`,
+  `known_mismatches.sh`; `.devcontainer/Dockerfile`; `shims/gi` (Gst) and
+  `shims/sitecustomize.py`; `assets/sentry/otto_sim.yaml` and
+  `known_gaps.yaml`; `tools/gap_report.py`; `.vscode/launch.json` and
+  `tasks.json`; README; patches re-exported.
+- **hw-emulator** `main` (d47b300, 50de6e6, 11641e6, 0193f00):
+  - `python/hwemu/clock.py` (SimClock, ProcessClock, LockstepParticipant) and `gaps.py`;
+  - `tools/elements_to_arow.py`;
+  - hub flags `--expect --order --ack-timeout (0 = forever) --clock-shm`;
+  - Python `Hub(..., lockstep=, expect=, ack_timeout=, seconds=)`;
+  - the pyrealsense2 shim's timestamps put on otto's sim-time epoch;
+  - four bugs fixed (below).
+
+  ctest is 45/45.
+- **Achilles** `claude/hwemu-support` b19f3dd (**not merged**):
+  `tools/urdf_to_arow.py`, and camera image room grown from 1280×720 to
+  1280×800 for the Arducam.
+- **Patches:**
+  - `patches/project-otto.patch` adds: the detector falls back to the CPU under HWEMU when there's no CUDA (a gap).
+  - `patches/aruw-mcb.patch` is unchanged.
+  - New `patches/aruw-mcb-fixes.patch` (see decision 2).
+
+### How this machine builds and runs
+
+The host has no cmake, g++-11, gtest or gdb, and sudo needs a password. So
+the scripts run themselves in the `aruw-sim-dev` Docker image
+(`scripts/dev.sh`). It mounts the checkout at its own path, uses the host
+network and IPC, and has WSLg/X11 for windows. Builds use `-j2`. CPU torch
+came down fine, so `uv sync` works.
+
+```sh
+source scripts/known_mismatches.sh   # the 3 known check_model mismatches, let through, not fixed
+scripts/run.sh                       # achilles; --backend mujoco, --window, --lockstep, --debug mcb|otto|hub
+scripts/smoke.sh
+```
+
+### Smoke results (30 sim s, lockstep, headless)
+
+**PASS on both backends** (`scripts/smoke.sh`, final run):
+
+| Check | Achilles | MuJoCo |
+|---|---|---|
+| reached 30 sim s, no crash | yes | yes |
+| both turret-MCB links up, IMUs calibrated (imu_state 3) | yes | yes |
+| chassis yaw, sim truth (beyblade) | 233 rad | 265 rad |
+| chassis travel, MCB odometry, net | 4.0 m: (0.7, 4.0) → (4.0, 6.2) | 3.4 m: (0.8, 4.0) → (2.5, 6.9) |
+| odometry messages MCB → otto / frames otto → MCB | 14999 / 3692 | 14999 / 3478 |
+| lidar packets; D435 frames; otto FPS lines | 11400×2; 1764; yes | 11400×2; 1765; yes |
+| referee messages; otto got robot ID and health | 3900; yes | 3900; yes |
+| unknown gaps | 0 of 34 | 0 of 30 |
+
+The chassis drives toward otto's autonav setpoint (4.4, 7.0) while spinning.
+
+### Bugs found and fixed on the way
+
+1. **Achilles model blew up within 20 ms.** `elements_to_arow` copied
+   `viscous_friction` across unchanged, but MuJoCo's backend takes it at the
+   joint and Achilles's DcMotor at the rotor. Every geared motor got
+   1/gear² too much friction (1296× on the 36:1 agitator). Fixed: converted
+   to rotor units (×g², coulomb ×g).
+2. **Achilles lidar adapter** kept a reference into a temporary
+   (`h_.Config().GetParams()`), so the sim crashed on the first scan. Fixed.
+3. **Firmware segfault about 19 s into every run:**
+   `aruwsrc/control/client-display/indicators/image_indicator.cpp`.
+   `ImageIndicator::update()` reads `images[image_index]` before its bounds
+   check, so once both HUD images are drawn it indexes past the end. On the
+   STM32 that's a silent garbage read; hosted, it's a segfault. Fixed in
+   `patches/aruw-mcb-fixes.patch`.
+4. **The hub hung on SIGTERM or `Hub.stop()` in lockstep.** The clock
+   blocks waiting for an expected participant and never saw the stop flag.
+   Fixed: `Hub::Run` forwards it.
+5. **MuJoCo `--window` deadlocked at startup.** `Simulate::Load()` ran before
+   `RenderLoop` existed. Fixed: the viewer is created and run on its own
+   thread. The window runs, but I haven't looked at it on screen.
+6. **otto clock domains.**
+   - Camera frames were stamped in raw sim seconds while otto's clock was epoch-based, so frames never matched odometry. They share one per-process epoch now.
+   - Sim time moved in 1 ms steps, so otto rejected odometry as "not newer". It is now interpolated between ticks and strictly increasing (a known gap).
+
+Verified by hand: `run.sh --debug mcb` + gdb. At a breakpoint the hub's
+tick froze (6004 → 6004 over 3 s), and after detach it carried on. Not
+exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
+`--rr`.
+
+### Decisions waiting on you
+
+1. **The 3 `check_model.py` mismatches**, unchanged, let through only for
+   test runs:
+   - wheelbase: URDF 0.2216 m vs MCB `WHEELBASE_RADIUS` 0.23864 m (`wheelbase_radius.joint_*_wheel`);
+   - minor yaw travel: URDF ±90° vs firmware ±143.5° (`joint_minor_yaw.limits`);
+   - minor pitch travel: URDF −20…35° vs firmware −13…40° (`joint_minor_pitch.limits`).
+2. **`patches/aruw-mcb-fixes.patch`.** It fixes a robot bug, not the
+   emulator interface, so it's kept apart and applied by default
+   (`ARUW_SIM_NO_FIXES=1` leaves it out; the firmware then crashes at about
+   19 s). Upstream it to aruw-mcb, or keep it here?
+3. **otto's detector CPU fallback** lives in `patches/project-otto.patch`.
+   It goes slightly beyond "only the interface", though it's gated on
+   `HWEMU_RUNTIME_DIR` and no CUDA. OK as is, or would you rather run otto
+   on a CUDA machine?
+4. **Achilles camera room 1280×800** (on the branch you're reviewing):
+   about 14 MB per camera instead of 13. The alternative is rendering the
+   Arducam at 1280×720 in the sim.
+5. **Speed.** In the container, with software GL (llvmpipe), the full stack
+   runs at roughly 0.25–0.55× real time: Achilles slower, MuJoCo faster.
+   The cameras are the likely cost (Arducam 1280×800 at 120 Hz, D435 at
+   60 Hz), but I haven't profiled it. Lockstep keeps results independent of
+   speed. Options: GPU passthrough into the container (the earlier session
+   saw a black viewer with it), or lower sim camera rates.
+6. **New codebase discrepancy (like 0x0A):** the MCB sends message type 14,
+   and otto logs `No handler for message of type 14`.
+7. **otto aborts if the MCB UART closes.** `cpp_serial` throws "read: End
+   of file", then `terminate()`. In the sim that only happens at the end of
+   a run, when the hub closes its ports, and smoke ignores exactly that.
+   On the robot it would be a cable or USB drop.
+8. **Sign conventions** are still open (minor pitch resting below the
+   firmware's minimum, the firmware's chassis yaw). Settle them with
+   `scripts/run.sh --compare`.
+9. **One run per machine at a time.** The hub's clock and camera rings use
+   fixed `/dev/shm` names (`hwemu_clock`, `hwemu_d435`, `hwemu_arducam`).
+10. **`vision_link`** is still in hw-emulator; moving it to the umbrella
+    hasn't been done. Keep it there?
+11. **The chassis MCB's own IMU calibration** can't be seen from outside.
+    smoke checks the two turret-MCB IMU states, which only reach
+    "calibrated" after the chassis MCB has answered them.
+
+### Still to do
+
+- The RMUL referee game and the arena, once your rules arrive.
+- Moving `vision_link` into the umbrella (decision 10).
+- Achilles: no joint damping or armature (both reported as gaps), and the
+  turret major's collision cylinder is approximated as a rounded slab.
 
 ## Model: your upload (`sentry_coarse_urdf_export.zip`)
 
