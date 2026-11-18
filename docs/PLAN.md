@@ -160,7 +160,7 @@ checks it, 30 sim s per backend (results below).
   `tools/urdf_to_arow.py`, and camera image room grown from 1280×720 to
   1280×800 for the Arducam.
 - **Patches:**
-  - `patches/project-otto.patch` adds: under HWEMU with no CUDA, the armor detector is disabled (no detections, a gap). It was briefly a CPU fallback; you chose to remove that.
+  - `patches/project-otto.patch` has **no detector changes** (your call). otto's armor detector is CUDA/TensorRT-only, so in a sim run `shims/sitecustomize.py` swaps `IconTargetDetector` for `shims/hwemu_detector_stub.py`. The stub never touches torch or CUDA, detects nothing, and reports the gap `detector: disabled`. The rest of otto keeps running, and **smoke fails on it on purpose** (its own check, plus the gap is left out of `known_gaps.yaml`).
   - `patches/aruw-mcb.patch` is unchanged.
   - New `patches/aruw-mcb-fixes.patch` (see decision 2).
 
@@ -180,7 +180,7 @@ scripts/smoke.sh
 
 ### Smoke results (30 sim s, lockstep, headless)
 
-**PASS on both backends** (`scripts/smoke.sh`, final run):
+**Before the detector was stubbed out: PASS on both backends** (`scripts/smoke.sh`). With the stub, smoke fails on the detector check and its gap, by design, and everything else still passes (see below):
 
 | Check | Achilles | MuJoCo |
 |---|---|---|
@@ -236,11 +236,10 @@ exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
    emulator interface, so it's kept apart and applied by default
    (`ARUW_SIM_NO_FIXES=1` leaves it out; the firmware then crashes at about
    19 s). Upstream it to aruw-mcb, or keep it here?
-3. **otto's detector is off without CUDA** (your call: the CPU fallback
-   was removed). `IconTargetDetector` hard-codes CUDA tensors and bindings,
-   so on a machine without CUDA the sim disables it: it reports no
-   detections and a gap. Auto-aim on rendered images needs a CUDA machine,
-   or the fallback back.
+3. **otto's detector is stubbed out in the sim** (your call: no detector
+   logic in the otto patch, no CUDA path). Auto-aim never sees a target, and
+   smoke fails on that by design. To test vision in sim you'd need either a
+   CUDA machine, with the stub made optional, or a detector that runs here.
 4. **Achilles camera room 1280×800** (on the branch you're reviewing):
    about 14 MB per camera instead of 13. The alternative is rendering the
    Arducam at 1280×720 in the sim.

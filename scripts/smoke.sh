@@ -14,6 +14,8 @@
 #   - the chassis rotated in sim truth, and translated by the MCB's own odometry;
 #   - otto got odometry, lidar scans and camera frames, and the referee's
 #     game status (through the MCB);
+#   - otto's armor detector ran. It's CUDA/TensorRT-only and the sim stubs
+#     it out (shims/hwemu_detector_stub.py), so today this FAILS, on purpose;
 #   - every sim gap is in assets/sentry/known_gaps.yaml.
 # Exits 1 if any check fails on any backend.
 set -uo pipefail
@@ -92,6 +94,9 @@ check("otto's autonav ran on them", "New attack setpoint" in otto or "setpoint" 
 fr = last(r"d435 \(realsense_d435\): frames=(\d+)", hub)
 check("the D435 rendered frames", fr > 0, f"{fr} frames")
 check("otto processed camera frames", "Average FPS" in otto, "an 'Average FPS' line in otto's log")
+stubbed = "[hwemu GAP] detector:" in otto
+check("otto's armor detector ran (not the sim's stub)", not stubbed,
+      "stubbed: the detector is CUDA/TensorRT-only (shims/hwemu_detector_stub.py)" if stubbed else "")
 ref = last(r"referee \(aruw_referee\): sent=(\d+)", hub)
 check("the referee sent game status", ref > 0, f"{ref} messages")
 # The hub closes its ports when the run's sim time is up; otto's UART reader

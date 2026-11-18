@@ -12,6 +12,10 @@ on either physics backend, [Achilles](https://github.com/EricJGoossen/Achilles)
  otto ──vision UART, LD19 lidars (PTYs), D435 + Arducam (/dev/shm rings)─────┘      (assets/sentry: URDF → .arow)
 ```
 
+otto's armor detector is CUDA/TensorRT-only, so the sim stubs it out
+([shims/hwemu_detector_stub.py](shims/hwemu_detector_stub.py)): no detections,
+and `smoke.sh` fails on it until real detection runs here.
+
 Nothing the sim doesn't model is silent: every stub, unserved message or
 approximation prints `[hwemu GAP] …` once and lands in the run's gap report.
 

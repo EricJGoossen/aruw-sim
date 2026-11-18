@@ -49,5 +49,6 @@ known:
      why: "the Jetson's NVENC video dumper isn't simulated; frames are dropped"}
   - {process: otto, source: arducam,
      why: "V4L2 camera controls (exposure, white balance) aren't simulated"}
-  - {process: otto, source: detector, key: "no CUDA*",
-     why: "no GPU here: the armor detector (CUDA-only) is disabled and detects nothing"}
+  # Deliberately NOT listed: `otto detector: disabled` (shims/hwemu_detector_stub.py).
+  # otto's detector is CUDA/TensorRT-only and the sim stubs it out, so smoke
+  # fails until real detection runs in the sim.

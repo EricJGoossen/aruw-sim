@@ -17,6 +17,10 @@ Only with HWEMU_RUNTIME_DIR set (a sim run), and HWEMU_SIM_TIME not "0":
   $HWEMU_PROCESS (default "otto") and acks every tick
   (hwemu.clock.LockstepParticipant): the hub waits for it, so pausing this
   process in a debugger freezes the whole sim.
+- **No armor detector.** otto's IconTargetDetector is CUDA/TensorRT-only;
+  when otto imports it, shims/hwemu_detector_stub.py's stand-in replaces it:
+  no torch, no CUDA, no detections, and the gap `detector: disabled`, which
+  scripts/smoke.sh fails on.
 - **Gaps.** Log records carrying "[hwemu GAP] source: message" (what the otto
   patch logs) are recorded in <runtime dir>/gaps/$HWEMU_PROCESS.jsonl, like
   hwemu.gaps.report's.
@@ -55,6 +59,8 @@ def _install() -> None:
         return original_handle(self, record)
 
     logging.Logger.handle = handle  # type: ignore[method-assign]
+
+    _install_detector_stub(here)
 
     if os.environ.get("HWEMU_SIM_TIME", "1") == "0":
         return
@@ -139,6 +145,37 @@ def _install() -> None:
         name = os.environ.get("HWEMU_PROCESS", "otto")
         hclock.LockstepParticipant(name).start(wait_s=wait)
         print(f"[hwemu] {name}: in lockstep with the hub", file=sys.stderr, flush=True)
+
+
+def _install_detector_stub(shims_dir: str) -> None:
+    """Swaps otto's IconTargetDetector for the sim's stub as its module loads."""
+    import importlib.abc
+    import importlib.util
+
+    target = "project_otto.vision.target_detector._target_detector"
+
+    class Finder(importlib.abc.MetaPathFinder):
+        def find_spec(self, name, path, target_module=None):  # type: ignore[no-untyped-def]
+            if name != target:
+                return None
+            sys.meta_path.remove(self)  # once is enough; and no recursion below
+            spec = importlib.util.find_spec(name)
+            if spec is None or spec.loader is None:
+                return spec
+            exec_module = spec.loader.exec_module
+
+            def exec_and_stub(module):  # type: ignore[no-untyped-def]
+                exec_module(module)
+                if shims_dir not in sys.path:
+                    sys.path.insert(0, shims_dir)
+                from hwemu_detector_stub import make_stub
+
+                module.IconTargetDetector = make_stub(module.TargetDetector)
+
+            spec.loader.exec_module = exec_and_stub  # type: ignore[method-assign]
+            return spec
+
+    sys.meta_path.insert(0, Finder())
 
 
 if os.environ.get("HWEMU_RUNTIME_DIR"):
