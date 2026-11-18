@@ -50,4 +50,4 @@ known:
   - {process: otto, source: arducam,
      why: "V4L2 camera controls (exposure, white balance) aren't simulated"}
   - {process: otto, source: detector, key: "no CUDA*",
-     why: "no GPU here: the detector runs on the CPU (latency isn't the Jetson's)"}
+     why: "no GPU here: the armor detector (CUDA-only) is disabled and detects nothing"}

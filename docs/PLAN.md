@@ -160,7 +160,7 @@ checks it, 30 sim s per backend (results below).
   `tools/urdf_to_arow.py`, and camera image room grown from 1280×720 to
   1280×800 for the Arducam.
 - **Patches:**
-  - `patches/project-otto.patch` adds: the detector falls back to the CPU under HWEMU when there's no CUDA (a gap).
+  - `patches/project-otto.patch` adds: under HWEMU with no CUDA, the armor detector is disabled (no detections, a gap). It was briefly a CPU fallback; you chose to remove that.
   - `patches/aruw-mcb.patch` is unchanged.
   - New `patches/aruw-mcb-fixes.patch` (see decision 2).
 
@@ -236,10 +236,11 @@ exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
    emulator interface, so it's kept apart and applied by default
    (`ARUW_SIM_NO_FIXES=1` leaves it out; the firmware then crashes at about
    19 s). Upstream it to aruw-mcb, or keep it here?
-3. **otto's detector CPU fallback** lives in `patches/project-otto.patch`.
-   It goes slightly beyond "only the interface", though it's gated on
-   `HWEMU_RUNTIME_DIR` and no CUDA. OK as is, or would you rather run otto
-   on a CUDA machine?
+3. **otto's detector is off without CUDA** (your call: the CPU fallback
+   was removed). `IconTargetDetector` hard-codes CUDA tensors and bindings,
+   so on a machine without CUDA the sim disables it: it reports no
+   detections and a gap. Auto-aim on rendered images needs a CUDA machine,
+   or the fallback back.
 4. **Achilles camera room 1280×800** (on the branch you're reviewing):
    about 14 MB per camera instead of 13. The alternative is rendering the
    Arducam at 1280×720 in the sim.

@@ -97,10 +97,11 @@ check("the referee sent game status", ref > 0, f"{ref} messages")
 # The hub closes its ports when the run's sim time is up; otto's UART reader
 # (cpp_serial) then throws "read: End of file" and aborts. That's the end of
 # the run, not a failure: drop it (and the traceback it prints) before looking.
+# Its reader threads' output can interleave, so cut at whichever comes first.
 otto_run = otto
-m = re.search(r"Exception in thread Thread-\d+ \(_read_forever\):", otto)
-if m and "read: End of file" in otto[m.start():]:
-    otto_run = otto[:m.start()]
+starts = [m.start() for m in re.finditer(r"terminate called after throwing|Exception in thread Thread-\d+ \(_read_forever\):", otto)]
+if starts and "read: End of file" in otto[min(starts):]:
+    otto_run = otto[:min(starts)]
 crash = re.search(r"Traceback|Segmentation fault|core dumped|CRITICAL", mcb + otto_run)
 check("no crash or traceback in the MCB or otto (before the run's end)", crash is None, crash.group(0) if crash else "")
 sys.exit(0 if all(checks) else 1)
