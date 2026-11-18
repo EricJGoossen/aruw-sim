@@ -260,7 +260,7 @@ exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
      `main.py`'s `_build_message_handlers()` never registers the handler.
      So otto logs `No handler for message of type 14` and drops it, on the
      robot too.
-   - Neither patch and nor the hub (a byte relay) are involved.
+   - Neither patch nor the hub (a byte relay) are involved.
    - Fix upstream: register the handler in otto, or stop sending it.
 7. **otto aborts if the MCB UART closes.** `cpp_serial` throws "read: End
    of file", then `terminate()`. In the sim that only happens at the end of
