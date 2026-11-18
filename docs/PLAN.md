@@ -249,8 +249,19 @@ exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
    60 Hz), but I haven't profiled it. Lockstep keeps results independent of
    speed. Options: GPU passthrough into the container (the earlier session
    saw a black viewer with it), or lower sim camera rates.
-6. **New codebase discrepancy (like 0x0A):** the MCB sends message type 14,
-   and otto logs `No handler for message of type 14`.
+6. **Pre-existing, not sim-introduced: message type 14 is dropped by
+   otto.**
+   - The MCB's `VisionCoprocessor::sendBulletsRemaining()` sends type 14
+     (`CV_MESSAGE_TYPES_BULLETS_REMAINING`, the referee's
+     `bulletsRemaining17`) every 100 ms. Its enum lists it under the
+     messages the MCB receives, but it's sent.
+   - otto has `BulletsRemainingMessage` (0x000E),
+     `BulletsRemainingMessageHandler` and `BulletsRemainingManager`, but
+     `main.py`'s `_build_message_handlers()` never registers the handler.
+     So otto logs `No handler for message of type 14` and drops it, on the
+     robot too.
+   - Neither patch and nor the hub (a byte relay) are involved.
+   - Fix upstream: register the handler in otto, or stop sending it.
 7. **otto aborts if the MCB UART closes.** `cpp_serial` throws "read: End
    of file", then `terminate()`. In the sim that only happens at the end of
    a run, when the hub closes its ports, and smoke ignores exactly that.
