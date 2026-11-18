@@ -1,0 +1,25 @@
+diff --git a/aruw-mcb-project/src/aruwsrc/control/client-display/indicators/image_indicator.cpp b/aruw-mcb-project/src/aruwsrc/control/client-display/indicators/image_indicator.cpp
+index c54b0508a..1b15a3e3c 100644
+--- a/aruw-mcb-project/src/aruwsrc/control/client-display/indicators/image_indicator.cpp
++++ b/aruw-mcb-project/src/aruwsrc/control/client-display/indicators/image_indicator.cpp
+@@ -19,6 +19,8 @@
+ 
+ #include "image_indicator.hpp"
+ 
++#include <algorithm>
++
+ #include "aruwsrc/control/client-display/images/marcus.hpp"
+ #include "aruwsrc/control/client-display/images/nathaniel_sussy.hpp"
+ 
+@@ -41,7 +43,10 @@ void ImageIndicator::initialize()
+ 
+ modm::ResumableResult<void> ImageIndicator::update()
+ {
+-    auto currentImage = images[image_index];
++    // Read in bounds even once every image has been drawn (image_index ==
++    // images.size()); the check after RF_BEGIN then returns. Indexing past the
++    // end here read garbage on the MCB and crashed the hosted build.
++    auto currentImage = images[std::min<size_t>(image_index, images.size() - 1)];
+     auto currentTuple = currentImage.lines[0];  // 0 here as placeholder until we access later
+     int startX, startY, endX, endY;
+ 

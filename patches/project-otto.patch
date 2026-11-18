@@ -60,3 +60,96 @@ index bfa1e507..67b6fee9 100644
          # List all connected devices
          try:
              _ = subprocess.run(["v4l2-ctl", "--list-devices"], check=True)
+diff --git a/project_otto/vision/target_detector/_target_detector.py b/project_otto/vision/target_detector/_target_detector.py
+index 04a796cb..72d603f2 100644
+--- a/project_otto/vision/target_detector/_target_detector.py
++++ b/project_otto/vision/target_detector/_target_detector.py
+@@ -1,3 +1,5 @@
++import logging
++import os
+ from abc import ABC, abstractmethod
+ from types import TracebackType
+ from typing import Any, Dict, List, Optional, Sequence, Set, Type, TypeVar
+@@ -87,7 +89,20 @@ class IconTargetDetector(TargetDetector):
+ 
+         self._confidence_threshold = confidence_threshold
+ 
+-        torch.cuda.init()
++        # HWEMU: in the hw-emulator simulator on a machine without CUDA, the
++        # same model runs on the CPU (onnxruntime's CPU provider, CPU tensors).
++        # On the robot, or with CUDA, nothing changes.
++        self._device = "cuda"
++        if os.environ.get("HWEMU_RUNTIME_DIR") and not torch.cuda.is_available():
++            self._device = "cpu"
++            providers = ["CPUExecutionProvider"]
++            logging.warning(
++                "[hwemu GAP] detector: no CUDA on this machine: the detector runs on the CPU "
++                "(no TensorRT), so its latency isn't the Jetson's"
++            )
++
++        if self._device == "cuda":
++            torch.cuda.init()
+ 
+         sess_opt = ort.SessionOptions()  # type: ignore
+         # sess_opt.log_severity_level = 0
+@@ -95,7 +110,8 @@ class IconTargetDetector(TargetDetector):
+         self._input_name = self._session.get_inputs()[0].name
+         self._output_name = self._session.get_outputs()[0].name
+ 
+-        torch.cuda.synchronize()
++        if self._device == "cuda":
++            torch.cuda.synchronize()
+ 
+         # Preallocate tensors to keep on GPU
+         self._input_tensor = torch.zeros(
+@@ -104,19 +120,19 @@ class IconTargetDetector(TargetDetector):
+             self.IMAGE_HEIGHT,
+             self.IMAGE_WIDTH,
+             dtype=torch.float32,
+-            device="cuda",
++            device=self._device,
+         )
+         self._output_tensor = torch.zeros(
+             1,
+             300,
+             14,
+             dtype=torch.float32,
+-            device="cuda",
++            device=self._device,
+         )
+         self._io_binding = self._session.io_binding()
+         self._io_binding.bind_input(
+             name="images",
+-            device_type="cuda",
++            device_type=self._device,
+             device_id=0,
+             element_type=np.float32,
+             shape=tuple(self._input_tensor.shape),
+@@ -124,7 +140,7 @@ class IconTargetDetector(TargetDetector):
+         )
+         self._io_binding.bind_output(
+             name="output0",
+-            device_type="cuda",
++            device_type=self._device,
+             device_id=0,
+             element_type=np.float32,
+             shape=tuple(self._output_tensor.shape),
+@@ -152,7 +168,7 @@ class IconTargetDetector(TargetDetector):
+         return detections
+ 
+     def _preprocess(self, image: ColorImage) -> None:
+-        tensor = torch.from_numpy(image).cuda().permute(2, 0, 1).unsqueeze(0).float().div_(255.0)
++        tensor = torch.from_numpy(image).to(self._device).permute(2, 0, 1).unsqueeze(0).float().div_(255.0)
+ 
+         tensor = interpolate(  # type: ignore
+             tensor,
+@@ -259,7 +275,8 @@ class IconTargetDetector(TargetDetector):
+         del self._input_tensor
+         del self._output_tensor
+         del self._session
+-        torch.cuda.empty_cache()
++        if self._device == "cuda":
++            torch.cuda.empty_cache()
+ 
+     def __enter__(self) -> "IconTargetDetector":
+         return self

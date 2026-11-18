@@ -1,0 +1,53 @@
+# The sim gaps a sentry run is expected to report. scripts/smoke.sh fails on
+# any other (scripts/gaps.sh --check); scripts/gaps.sh marks the others NEW.
+# Each entry matches a gap's process, source and key (shell globs; a missing
+# field matches anything). `why` says why it's expected -- and what would
+# close it. Keep this list honest: a gap goes here only once it's understood.
+known:
+  # ---- the model (build time) --------------------------------------------------
+  - {process: model, source: doctor_urdf, key: "*CAD visual meshes are not rendered*",
+     why: "cameras see the collision primitives, not the CAD meshes (Achilles can't draw meshes; MuJoCo could, not wired up)"}
+  - {process: model, source: doctor_urdf, key: "*light bars are colored, not emissive*",
+     why: "URDF has no emission; the detector sees flat-colored bars"}
+  - {process: model, source: urdf_to_arow, key: "cylinder-slab:turret_major",
+     why: "Achilles has no cylinder collider; the turret major's cylinder is a rounded slab (corners 0.184 m vs 0.16 m)"}
+  - {process: model, source: urdf_to_arow, key: dynamics-damping,
+     why: "Achilles has no joint damping; the rollers' 1e-4 N*m*s damping is dropped"}
+  - {process: model, source: urdf_to_arow, key: limit-effort-velocity,
+     why: "URDF effort/velocity limits; the motor models limit current and speed instead"}
+  - {process: model, source: elements_to_arow, key: "armature:roller_joints",
+     why: "Achilles has no armature; it's added to each roller's inertia about its axis"}
+
+  # ---- the hub -------------------------------------------------------------------
+  - {process: hub, source: cap_bank, key: stub,
+     why: "cap bank stub (plan: stubs only)"}
+  - {process: hub, source: voltage_current_sensor, key: ideal-supply,
+     why: "ideal chassis supply; current from the motors' electrical power only"}
+  - {process: hub, source: referee, key: game-model-pending,
+     why: "RMUL game logic waits on the rules; the match is held in progress"}
+  - {process: hub, source: referee, key: "rx:769",
+     why: "0x0301 (client UI / robot interaction) is parsed, not acted on"}
+  - {process: hub, source: pinbus, key: "pwm:Buzzer", why: "buzzer stub (plan: stubs only)"}
+  - {process: hub, source: pinbus, key: "pwm:ImuHeater", why: "no IMU thermal model"}
+  - {process: hub, source: pinbus, key: "pwm:PWMOutPin[WX]", why: "the agitator fan / spare PWM outputs: stubs"}
+  - {process: hub, source: pinbus, key: "adc:DisplayJoystick", why: "the OLED's joystick: UI only, reads 0"}
+  - {process: hub, source: pinbus, key: "gpio-out:Led*", why: "LEDs: nothing reacts"}
+
+  # ---- the MCB -------------------------------------------------------------------
+  - {process: mcb, source: sentry, key: remote-forced-mode,
+     why: "remote control is out of scope: the HWEMU SIM HACK forces UP,MID (auto nav + auto aim)"}
+  - {process: mcb, source: uart, key: "unconnected:REMOTE", why: "no DR16 receiver (out of scope)"}
+  - {process: mcb, source: rtt, key: segger-rtt-stub, why: "RTT telemetry stub (plan: stubs only)"}
+  - {process: mcb, source: oled, why: "OLED stub (plan: stubs only)"}
+
+  # ---- otto ----------------------------------------------------------------------
+  - {process: otto, source: sitecustomize, key: interpolated,
+     why: "time between 1 ms hub ticks is interpolated, so robot code never sees two equal timestamps"}
+  - {process: otto, source: sitecustomize, key: wall-timeouts,
+     why: "C-level waits (threading, queue, select, socket, serial) time out on wall time"}
+  - {process: otto, source: gst, key: video-dump,
+     why: "the Jetson's NVENC video dumper isn't simulated; frames are dropped"}
+  - {process: otto, source: arducam,
+     why: "V4L2 camera controls (exposure, white balance) aren't simulated"}
+  - {process: otto, source: detector, key: "no CUDA*",
+     why: "no GPU here: the detector runs on the CPU (latency isn't the Jetson's)"}

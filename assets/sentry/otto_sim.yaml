@@ -1,0 +1,15 @@
+# otto's sim overlay, merged last, on base_config.yaml + sentry_name_config.yaml.
+# scripts/run.sh expands ${HWEMU_RUNTIME_DIR} and writes the result to
+# <runtime dir>/otto_sim.yaml, which is the file otto loads.
+#
+# Only what has to differ in the sim: where the hub's ports are and where logs
+# go. Everything else -- the cameras' serials and intrinsics, the lidar ports,
+# the turret geometry -- is the robot's own config, and the hub serves it
+# (assets/sentry/devices.yaml uses the same ids).
+
+mcb_comms:
+  # The hub's vision link: the MCB's USART2 on one PTY, otto's UART on this one.
+  port_name: "${HWEMU_RUNTIME_DIR}/vision_otto"
+
+logging:
+  root_dir: "${HWEMU_RUNTIME_DIR}/otto_logs"

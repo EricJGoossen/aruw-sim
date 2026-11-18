@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "build", "type": "shell", "command": "scripts/build.sh", "group": {"kind": "build", "isDefault": true},
+     "problemMatcher": ["$gcc"]},
+    {"label": "smoke", "type": "shell", "command": "scripts/smoke.sh", "group": "test", "problemMatcher": []},
+    {"label": "run (achilles)", "type": "shell", "command": "source scripts/known_mismatches.sh && scripts/run.sh --backend achilles",
+     "isBackground": true, "problemMatcher": []},
+    {"label": "run (mujoco, window)", "type": "shell", "command": "source scripts/known_mismatches.sh && scripts/run.sh --backend mujoco --window",
+     "isBackground": true, "problemMatcher": []},
+    {"label": "run: debug mcb", "type": "shell", "command": "source scripts/known_mismatches.sh && scripts/run.sh --debug mcb",
+     "isBackground": true,
+     "problemMatcher": {"owner": "aruw-sim", "pattern": {"regexp": "^__never__$"},
+                        "background": {"activesBegin": true, "beginsPattern": "\\[run\\]", "endsPattern": "waiting for a debugger on :2345"}}},
+    {"label": "run: debug otto", "type": "shell", "command": "source scripts/known_mismatches.sh && scripts/run.sh --debug otto",
+     "isBackground": true,
+     "problemMatcher": {"owner": "aruw-sim", "pattern": {"regexp": "^__never__$"},
+                        "background": {"activesBegin": true, "beginsPattern": "\\[run\\]", "endsPattern": "waiting for a debugger on :5678"}}},
+    {"label": "run: debug hub", "type": "shell", "command": "source scripts/known_mismatches.sh && scripts/run.sh --debug hub",
+     "isBackground": true,
+     "problemMatcher": {"owner": "aruw-sim", "pattern": {"regexp": "^__never__$"},
+                        "background": {"activesBegin": true, "beginsPattern": "\\[run\\]", "endsPattern": "waiting for a debugger on :2347"}}},
+    {"label": "gaps (last run)", "type": "shell", "command": "scripts/gaps.sh", "problemMatcher": []}
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  // Debugging the sentry in sim. Start a run with the matching --debug first
+  // (the "run: debug ..." tasks do), then attach. Everything is in lockstep
+  // with no ack timeout, so a breakpoint freezes the whole sim and nothing
+  // times out; continue and it carries on.
+  //   scripts/run.sh --debug mcb    -> "Attach MCB"  (gdbserver :2345)
+  //   scripts/run.sh --debug otto   -> "Attach otto" (debugpy :5678)
+  //   scripts/run.sh --debug hub    -> "Attach hub"  (gdbserver :2347)
+  // gdb comes from scripts/gdb.sh (the dev container's, if the host has none).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach MCB",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/aruw-mcb/aruw-mcb-project/build/sim-hwemu/scons-debug/TARGET_SENTRY_ACHLYS/aruw-mcb.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${workspaceFolder}/scripts/gdb.sh",
+      "miDebuggerServerAddress": "localhost:2345",
+      "setupCommands": [
+        {"description": "pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true},
+        {"description": "the hub's sockets: don't stop on SIGPIPE", "text": "handle SIGPIPE nostop noprint", "ignoreFailures": true}
+      ]
+    },
+    {
+      "name": "Attach hub",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/cmake/hw-emulator/hwemu",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${workspaceFolder}/scripts/gdb.sh",
+      "miDebuggerServerAddress": "localhost:2347",
+      "setupCommands": [
+        {"description": "pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true},
+        {"description": "don't stop on SIGPIPE", "text": "handle SIGPIPE nostop noprint", "ignoreFailures": true}
+      ]
+    },
+    {
+      "name": "Attach otto",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {"host": "localhost", "port": 5678},
+      "pathMappings": [{"localRoot": "${workspaceFolder}", "remoteRoot": "${workspaceFolder}"}],
+      "justMyCode": false
+    },
+    {
+      "name": "Replay MCB (rr)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/aruw-mcb/aruw-mcb-project/build/sim-hwemu/scons-debug/TARGET_SENTRY_ACHLYS/aruw-mcb.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${workspaceFolder}/scripts/gdb.sh",
+      "miDebuggerServerAddress": "localhost:2346",
+      "setupCommands": [{"text": "-enable-pretty-printing", "ignoreFailures": true}],
+      // First: scripts/dev.sh rr replay -s 2346 build/run/<backend>/rr/latest-trace
+    }
+  ],
+  "compounds": [
+    {"name": "Attach MCB + otto", "configurations": ["Attach MCB", "Attach otto"]}
+  ]
+}
