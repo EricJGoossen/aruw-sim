@@ -1,0 +1,62 @@
+diff --git a/project_otto/autonav/lidar/_lidar.py b/project_otto/autonav/lidar/_lidar.py
+index 9cdcf0be..b6e3da97 100644
+--- a/project_otto/autonav/lidar/_lidar.py
++++ b/project_otto/autonav/lidar/_lidar.py
+@@ -1,4 +1,5 @@
+ import glob
++import os
+ import logging
+ import subprocess
+ from abc import ABC, abstractmethod
+@@ -76,6 +77,17 @@ class LiDAR(ABC):
+         throws:
+             ValueError if no connected USB port is found for the given port name
+         """
++        # HWEMU: in the hw-emulator simulator there's no USB bus to search:
++        # the hub serves each LD19 on a PTY named after its configured port
++        # (<runtime dir>/ld19-<port>).
++        hwemu_runtime = os.environ.get("HWEMU_RUNTIME_DIR")
++        if hwemu_runtime:
++            path = os.path.join(hwemu_runtime, f"ld19-{port_name}")
++            if os.path.exists(path):
++                return path
++            logging.warning(f"[hwemu GAP] lidar: the hub serves no LD19 for port {port_name} ({path})")
++            return None
++
+         for tty in glob.glob("/dev/ttyUSB*"):
+             result = subprocess.run(["udevadm", "info", "-a", "-n", tty], capture_output=True, text=True)
+             for line in result.stdout.splitlines():
+diff --git a/project_otto/camera/imageset_sources.py b/project_otto/camera/imageset_sources.py
+index bfa1e507..67b6fee9 100644
+--- a/project_otto/camera/imageset_sources.py
++++ b/project_otto/camera/imageset_sources.py
+@@ -290,9 +290,17 @@ class ArducamImagesetSource(ColorImagesetSource[JetsonTimestamp], metaclass=abc.
+         """
+         camera_path = f"/dev/v4l/by-path/{device_serial}"
+         logging.info(f"Checking for existing users of camera device: {camera_path}")
+-        self._kill_device_users(camera_path)
+-        time.sleep(1.0)
+-        self._set_camera_controls(camera_path, self._config)
++        if os.environ.get("HWEMU_RUNTIME_DIR"):
++            # HWEMU: the hw-emulator simulator serves this camera through its
++            # GStreamer stand-in; there's no V4L2 device to free or configure.
++            logging.warning(
++                "[hwemu GAP] arducam: V4L2 camera controls (exposure, white balance, saturation) "
++                "aren't simulated; the sim renders at fixed exposure"
++            )
++        else:
++            self._kill_device_users(camera_path)
++            time.sleep(1.0)
++            self._set_camera_controls(camera_path, self._config)
+ 
+         pipeline_str: str = f"""
+                                     v4l2src device={camera_path} !
+@@ -320,6 +328,8 @@ class ArducamImagesetSource(ColorImagesetSource[JetsonTimestamp], metaclass=abc.
+         """
+         Lists all connected camera devices through V4L2.
+         """
++        if os.environ.get("HWEMU_RUNTIME_DIR"):
++            return  # HWEMU: no V4L2 devices in the simulator
+         # List all connected devices
+         try:
+             _ = subprocess.run(["v4l2-ctl", "--list-devices"], check=True)

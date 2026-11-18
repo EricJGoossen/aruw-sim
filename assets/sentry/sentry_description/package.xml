@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sentry_description</name>
+  <version>1.0.0</version>
+  <description>
+    URDF and 3D mesh model description package for the RoboMaster Sentry Mk2 robot.
+    Features authentic physical masses (19.63 kg), positive-definite inertia tensors,
+    and lightweight visual and analytical collision geometries.
+  </description>
+
+  <maintainer email="sentry_team@example.com">RoboMaster Sentry Development Team</maintainer>
+  <author email="sentry_team@example.com">RoboMaster Sentry Development Team</author>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>urdf</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <architecture_independent/>
+  </export>
+</package>

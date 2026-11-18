@@ -1,0 +1,1 @@
+controller_joint_names: ['joint_fl_wheel', 'joint_fr_wheel', 'joint_bl_wheel', 'joint_br_wheel', 'joint_major', 'joint_minor_yaw', 'joint_minor_pitch']

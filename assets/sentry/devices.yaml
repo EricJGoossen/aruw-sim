@@ -1,0 +1,289 @@
+# The sentry's devices, as its MCB (aruw-mcb TARGET_SENTRY_ACHLYS) and otto
+# see them. CAN ids and buses from aruwsrc/robot/sentry/sentry_control.cpp,
+# the objects that firmware actually builds (sentry_chassis_constants.hpp's
+# own *_MOTOR_IDs disagree with them and are unused). Pin names are the
+# hosted Board's (aruw-mcb patch, tap/board/board.hpp).
+#
+# bind.mujoco declares each MuJoCo element on the doctored URDF
+# (build/assets/sentry/sentry_mujoco.urdf, see urdf_doctor.yaml). Motor
+# constants are at the rotor, from the DJI datasheets:
+#   M3508: Kt 0.3 N*m/A at the 3591:187 output -> 0.01562 at the rotor, 0.194
+#          ohm, 24.48 rpm/V at the output -> Ke 0.0203 V/(rad/s) at the rotor,
+#          20 A (C620)
+#   M2006: Kt 0.18 N*m/A at the 36:1 output -> 0.005, 10 A (C610); resistance
+#          and Ke estimated (0.5 ohm, 0.0129)
+#   GM6020: Kt 0.741, Ke 0.716, 1.8 ohm, 3 A in current control
+# `reduction` (the firmware's view: rotor turns per joint turn) and
+# gear_ratio (the sim's: joint turns per rotor turn) are inverses.
+# `direction` is each motor's (and encoder's) mounting relative to its URDF
+# joint axis: -1 where the firmware constructs it inverted (DjiMotor
+# isInverted, CanEncoder/Lamprey inverted), which is what that flag
+# compensates for. `encoder_offset` is the raw count a motor reports with its
+# joint at zero: the firmware's calibrated startEncoderValue. tools/
+# check_model.py checks both against the firmware.
+
+plugins:
+  - ../../build/cmake/plugins/libaruw_devices.so
+
+devices:
+  # ---- CAN2: chassis (X-drive, 268:17 gearboxes) ---------------------------
+  - name: rf_wheel_motor
+    type: dji_can_motor
+    preset: m3508
+    transport: {bus: can2, id: 0x201}
+    params: {direction: -1, reduction: 15.764706}
+    bind:
+      motor: rf_wheel_motor
+      encoder: rf_wheel_encoder
+      mujoco:
+        rf_wheel_motor: {type: motor, joint: joint_fr_wheel, torque_constant: 0.01562, back_emf_constant: 0.0203,
+                         resistance: 0.194, bus_voltage: 24, max_current: 20, gear_ratio: 0.063433,
+                         gearbox_efficiency: 0.9, viscous_friction: 0.0005}
+        rf_wheel_encoder: {type: encoder, joint: joint_fr_wheel, resolution: 0.00004866}
+  - name: lf_wheel_motor
+    type: dji_can_motor
+    preset: m3508
+    transport: {bus: can2, id: 0x202}
+    params: {direction: -1, reduction: 15.764706}
+    bind:
+      motor: lf_wheel_motor
+      encoder: lf_wheel_encoder
+      mujoco:
+        lf_wheel_motor: {type: motor, joint: joint_fl_wheel, torque_constant: 0.01562, back_emf_constant: 0.0203,
+                         resistance: 0.194, bus_voltage: 24, max_current: 20, gear_ratio: 0.063433,
+                         gearbox_efficiency: 0.9, viscous_friction: 0.0005}
+        lf_wheel_encoder: {type: encoder, joint: joint_fl_wheel, resolution: 0.00004866}
+  - name: lb_wheel_motor
+    type: dji_can_motor
+    preset: m3508
+    transport: {bus: can2, id: 0x203}
+    params: {direction: -1, reduction: 15.764706}
+    bind:
+      motor: lb_wheel_motor
+      encoder: lb_wheel_encoder
+      mujoco:
+        lb_wheel_motor: {type: motor, joint: joint_bl_wheel, torque_constant: 0.01562, back_emf_constant: 0.0203,
+                         resistance: 0.194, bus_voltage: 24, max_current: 20, gear_ratio: 0.063433,
+                         gearbox_efficiency: 0.9, viscous_friction: 0.0005}
+        lb_wheel_encoder: {type: encoder, joint: joint_bl_wheel, resolution: 0.00004866}
+  - name: rb_wheel_motor
+    type: dji_can_motor
+    preset: m3508
+    transport: {bus: can2, id: 0x204}
+    params: {direction: -1, reduction: 15.764706}
+    bind:
+      motor: rb_wheel_motor
+      encoder: rb_wheel_encoder
+      mujoco:
+        rb_wheel_motor: {type: motor, joint: joint_br_wheel, torque_constant: 0.01562, back_emf_constant: 0.0203,
+                         resistance: 0.194, bus_voltage: 24, max_current: 20, gear_ratio: 0.063433,
+                         gearbox_efficiency: 0.9, viscous_friction: 0.0005}
+        rb_wheel_encoder: {type: encoder, joint: joint_br_wheel, resolution: 0.00004866}
+
+  # ---- CAN2: turret major yaw (M3508 3591:187 x 95:30 pulley) ----------------
+  - name: major_yaw_motor
+    type: dji_can_motor
+    preset: m3508
+    transport: {bus: can2, id: 0x205}
+    params: {direction: -1, reduction: 60.810, encoder_offset: 1060}
+    bind:
+      motor: major_yaw_motor
+      encoder: major_yaw_motor_encoder
+      mujoco:
+        major_yaw_motor: {type: motor, joint: joint_major, torque_constant: 0.01562, back_emf_constant: 0.0203,
+                          resistance: 0.194, bus_voltage: 24, max_current: 20, gear_ratio: 0.016445,
+                          gearbox_efficiency: 0.85, viscous_friction: 0.02}
+        major_yaw_motor_encoder: {type: encoder, joint: joint_major, resolution: 0.00001262}
+  - name: major_yaw_lamprey
+    type: lamprey_encoder
+    transport: {bus: can2, id: 0x1E7}
+    params: {direction: 1}
+    bind:
+      encoder: major_yaw_encoder
+      mujoco:
+        major_yaw_encoder: {type: encoder, joint: joint_major}
+  - name: major_yaw_can_encoder
+    type: can_encoder
+    transport: {bus: can2, id: 0x1E0}
+    params: {direction: -1}
+    bind: {encoder: major_yaw_encoder}
+
+  # ---- CAN1: turret minor ("widow"): yaw, pitch, flywheels, agitator --------
+  - name: minor_yaw_motor
+    type: dji_can_motor
+    preset: gm6020_current
+    transport: {bus: can1, id: 0x206}
+    params: {encoder_offset: 2693, direction: 1}
+    bind:
+      motor: minor_yaw_motor
+      encoder: minor_yaw_encoder
+      mujoco:
+        minor_yaw_motor: {type: motor, joint: joint_minor_yaw, torque_constant: 0.741, back_emf_constant: 0.716,
+                          resistance: 1.8, bus_voltage: 24, max_current: 3, viscous_friction: 0.002}
+        minor_yaw_encoder: {type: encoder, joint: joint_minor_yaw, resolution: 0.00076699}
+  - name: minor_pitch_motor
+    type: dji_can_motor
+    preset: gm6020_current
+    transport: {bus: can1, id: 0x205}
+    params: {encoder_offset: 7357, direction: -1}
+    bind:
+      motor: minor_pitch_motor
+      encoder: minor_pitch_encoder
+      mujoco:
+        minor_pitch_motor: {type: motor, joint: joint_minor_pitch, torque_constant: 0.741, back_emf_constant: 0.716,
+                            resistance: 1.8, bus_voltage: 24, max_current: 3, viscous_friction: 0.002}
+        minor_pitch_encoder: {type: encoder, joint: joint_minor_pitch, resolution: 0.00076699}
+  - name: flywheel_left_motor
+    type: dji_can_motor
+    preset: m3508_direct
+    transport: {bus: can1, id: 0x202}
+    params: {direction: 1}
+    bind:
+      motor: flywheel_left_motor
+      encoder: flywheel_left_encoder
+      mujoco:
+        flywheel_left_motor: {type: motor, joint: joint_flywheel_left, torque_constant: 0.01562,
+                              back_emf_constant: 0.0203, resistance: 0.194, bus_voltage: 24, max_current: 20,
+                              viscous_friction: 0.00002}
+        flywheel_left_encoder: {type: encoder, joint: joint_flywheel_left}
+  - name: flywheel_right_motor
+    type: dji_can_motor
+    preset: m3508_direct
+    transport: {bus: can1, id: 0x201}
+    params: {direction: -1}
+    bind:
+      motor: flywheel_right_motor
+      encoder: flywheel_right_encoder
+      mujoco:
+        flywheel_right_motor: {type: motor, joint: joint_flywheel_right, torque_constant: 0.01562,
+                               back_emf_constant: 0.0203, resistance: 0.194, bus_voltage: 24, max_current: 20,
+                               viscous_friction: 0.00002}
+        flywheel_right_encoder: {type: encoder, joint: joint_flywheel_right}
+  - name: agitator_motor
+    type: dji_can_motor
+    preset: m2006
+    transport: {bus: can1, id: 0x204}
+    params: {direction: 1}
+    bind:
+      motor: agitator_motor
+      encoder: agitator_encoder
+      mujoco:
+        agitator_motor: {type: motor, joint: joint_agitator, torque_constant: 0.005, back_emf_constant: 0.0129,
+                         resistance: 0.5, bus_voltage: 24, max_current: 10, gear_ratio: 0.027778,
+                         gearbox_efficiency: 0.8, viscous_friction: 0.001}
+        agitator_encoder: {type: encoder, joint: joint_agitator}
+
+  # ---- turret MCBs: the widow's on CAN1, the chassis's on CAN2 ---------------
+  - name: turret_mcb_widow
+    type: turret_mcb
+    transport: {bus: can1}
+    bind:
+      gyro: widow_gyro
+      accel: widow_accel
+      attitude: widow_attitude
+      mujoco:
+        widow_gyro: {type: gyro, body: turret_mcb1_frame, noise: 0.002}
+        widow_accel: {type: accel, body: turret_mcb1_frame, noise: 0.02}
+        widow_attitude: {type: attitude, body: turret_mcb1_frame}
+  - name: turret_mcb_chassis
+    type: turret_mcb
+    transport: {bus: can2}
+    bind:
+      gyro: chassis_gyro
+      accel: chassis_accel
+      attitude: chassis_attitude
+      mujoco:
+        chassis_gyro: {type: gyro, body: chassis_mcb_frame, noise: 0.002}
+        chassis_accel: {type: accel, body: chassis_mcb_frame, noise: 0.02}
+        chassis_attitude: {type: attitude, body: chassis_mcb_frame}
+
+  # ---- the main MCB's IMUs (on the turret major), over SPI -------------------
+  - name: mpu6500
+    type: spi_imu
+    params: {chip: mpu6500, temperature: 40}
+    transport: {device: mpu6500, bus: spi5, cs: ImuNss}
+    bind:
+      gyro: major_mpu6500_gyro
+      accel: major_mpu6500_accel
+      mujoco:
+        major_mpu6500_gyro: {type: gyro, body: turret_major_mpu6500, noise: 0.002}
+        major_mpu6500_accel: {type: accel, body: turret_major_mpu6500, noise: 0.02}
+  - name: ism330_primary
+    type: spi_imu
+    params: {chip: ism330dhcx, temperature: 40}
+    transport: {device: ism330_primary, bus: spi4, cs: Ism330Nss}
+    bind:
+      gyro: major_ism330a_gyro
+      accel: major_ism330a_accel
+      mujoco:
+        major_ism330a_gyro: {type: gyro, body: turret_major_ism330_primary, noise: 0.001}
+        major_ism330a_accel: {type: accel, body: turret_major_ism330_primary, noise: 0.01}
+  - name: ism330_secondary
+    type: spi_imu
+    params: {chip: ism330dhcx, temperature: 40}
+    transport: {device: ism330_secondary, bus: spi4, cs: DigitalOutPinH}
+    bind:
+      gyro: major_ism330b_gyro
+      accel: major_ism330b_accel
+      mujoco:
+        major_ism330b_gyro: {type: gyro, body: turret_major_ism330_secondary, noise: 0.001}
+        major_ism330b_accel: {type: accel, body: turret_major_ism330_secondary, noise: 0.01}
+
+  # ---- ARUW boards and the referee (aruw_devices plugin) ---------------------
+  - name: cap_bank
+    type: aruw_cap_bank
+    transport: {bus: can2}
+  - name: chassis_power_sensor
+    type: aruw_voltage_current_sensor
+    transport: {bus: can2}
+    bind:
+      loads:
+        - {motor: rf_wheel_motor, encoder: rf_wheel_encoder, resistance: 0.194, back_emf: 0.0203, reduction: 15.764706}
+        - {motor: lf_wheel_motor, encoder: lf_wheel_encoder, resistance: 0.194, back_emf: 0.0203, reduction: 15.764706}
+        - {motor: lb_wheel_motor, encoder: lb_wheel_encoder, resistance: 0.194, back_emf: 0.0203, reduction: 15.764706}
+        - {motor: rb_wheel_motor, encoder: rb_wheel_encoder, resistance: 0.194, back_emf: 0.0203, reduction: 15.764706}
+  - name: referee
+    type: aruw_referee
+    transport: {port: referee}
+    params: {robot_id: 107, game_type: 3, game_stage: 4}
+
+  # ---- the Jetson's links: vision UART, lidars, cameras ----------------------
+  - name: vision
+    type: vision_link
+    transport: {mcb: vision_mcb, otto: vision_otto}
+    params: {log: vision.jsonl}   # every message, decoded, in the runtime dir
+  - name: lidar_front
+    type: ld19_lidar
+    transport: {port: "ld19-1-4.1:1.0"}
+    bind:
+      lidar: lidar_front_scan
+      mujoco:
+        lidar_front_scan: {type: lidar, body: lidar_front, samples: 456, min_range: 0.02, max_range: 12, period: 0.1}
+  - name: lidar_back
+    type: ld19_lidar
+    transport: {port: "ld19-1-4.4:1.0"}
+    bind:
+      lidar: lidar_back_scan
+      mujoco:
+        lidar_back_scan: {type: lidar, body: lidar_back, samples: 456, min_range: 0.02, max_range: 12, period: 0.1}
+  - name: d435
+    type: realsense_d435
+    transport: {shm: hwemu_d435}
+    params: {serial: "hwemu-d435"}
+    bind:
+      camera: turret_camera_image
+      mujoco:
+        # 960x540, otto's RealsenseConfig default; intrinsics estimated for a
+        # D435 color sensor at that size.
+        turret_camera_image: {type: camera, body: turret_camera, width: 960, height: 540,
+                              fx: 680.0, fy: 680.0, cx: 480.0, cy: 270.0, far: 12, period: 0.0166667}
+  - name: arducam
+    type: arducam
+    transport: {v4l: "platform-3610000.usb-usb-0:4.3:1.0-video-index0", shm: hwemu_arducam}
+    bind:
+      camera: arducam_image
+      mujoco:
+        # otto sentry_name_config.yaml arducam_cameras[0] intrinsics; the sim
+        # renders an undistorted pinhole (its distortion is a known gap).
+        arducam_image: {type: camera, body: arducam, width: 1280, height: 800,
+                        fx: 917.347, fy: 916.604, cx: 623.823, cy: 326.610, far: 12, period: 0.0083333}

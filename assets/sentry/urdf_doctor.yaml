@@ -1,0 +1,158 @@
+# What the sim adds to the vendored sentry URDF (sentry_description/urdf, kept
+# unchanged), applied by tools/doctor_urdf.py. The doctored URDFs it writes
+# (build/assets/sentry/*.urdf) are the only ones the sim loads.
+#
+# Every number here is the sim's own. For now most are copied from the robot
+# code (each entry's `source` says from where), since there are no separate
+# measurements yet; replace them with real measurements here. The sim never
+# reads the MCB or otto code: tools/check_model.py compares this file and the
+# doctored URDF against it and fails the build, loudly, on any drift.
+#
+# Lengths are metres, angles radians, rpy is roll-pitch-yaw about fixed
+# x, y, z (URDF's convention).
+
+# The vendored URDFs, relative to this file.
+urdf:
+  mujoco: sentry_description/urdf/sentry_coarse_standalone.urdf   # convex-hull collision meshes
+  achilles: sentry_description/urdf/sentry_primitives.urdf        # boxes and cylinders
+
+# The robot drives: a floating base on a floor, starting where the MCB's
+# odometry thinks it starts (sentry_chassis_constants.hpp
+# INITIAL_CHASSIS_POSITION_X/Y), with the base_footprint on the ground.
+world:
+  floor: {size: [12.0, 8.0], thickness: 0.1}
+  spawn: {xyz: [0.75, 4.0, 0.0], rpy: [0, 0, 0]}
+  source: mcb sentry_chassis_constants.hpp INITIAL_CHASSIS_POSITION_X/Y
+
+# MuJoCo's URDF importer options. fusestatic must stay false: the frames below
+# are fixed links, and fusing them would lose the bodies sensors mount on.
+mujoco_compiler: {discardvisual: "false", fusestatic: "false", balanceinertia: "true", strippath: "false"}
+mujoco_option: {timestep: "0.001", integrator: "implicitfast"}
+
+# Fixed sensor frames, each a massless link on a fixed joint.
+frames:
+  # The main MCB rides on the turret major: its MPU6500 and two ISM330s, fused
+  # by FusedImuMekfKf. In the code these are in millimetres.
+  turret_major_ism330_primary:
+    parent: turret_major
+    xyz: [-0.0767, -0.11614, 0.0]
+    rpy: [0, 0, 0]
+    source: mcb sentry_drivers.hpp turretMajorImuTransforms[0] (mm)
+  turret_major_ism330_secondary:
+    parent: turret_major
+    xyz: [-0.0767, 0.11604, 0.0]
+    rpy: [0, 0, 3.14159265]
+    source: mcb sentry_drivers.hpp turretMajorImuTransforms[1] (mm)
+  turret_major_mpu6500:
+    parent: turret_major
+    xyz: [-0.01497, -0.1155, 0.0]
+    rpy: [0, 0, 1.57079633]
+    source: mcb sentry_drivers.hpp turretMajorImuTransforms[2] (mm)
+  # The chassis MCB (turret-MCB link on CAN2): its IMU feeds chassis odometry.
+  # Its firmware applies these mounts itself (the 0x1F5/0x1F6 handshake), so
+  # what it reports is in the chassis frame: the sim's sensor sits at
+  # chassis_mcb_frame, and the board's own mounts are kept here for the check.
+  chassis_mcb_frame: {parent: base_link, xyz: [0, 0, 0], rpy: [0, 0, 0], source: "chassis frame (turret MCB output frame)"}
+  chassis_mcb_bmi088:
+    parent: base_link
+    xyz: [0.04117, 0.0, 0.04945]
+    rpy: [0, 0, 0]
+    source: mcb sentry_chassis_constants.hpp CHASSIS_MCB_BMI088_MOUNTING_TRANSFORM
+  chassis_mcb_ism330:
+    parent: base_link
+    xyz: [0.09811, 0.0, 0.003253]
+    rpy: [0, 0, 0]
+    source: mcb sentry_chassis_constants.hpp CHASSIS_MCB_ISM330_MOUNTING_TRANSFORM
+  # The widow turret MCB (CAN1), on the minor's firing system; as above, its
+  # output is in the turret frame.
+  turret_mcb1_frame: {parent: turret_minor_firing_system, xyz: [0, 0, 0], rpy: [0, 0, 0], source: "turret frame (turret MCB output frame)"}
+  turret_mcb1_bmi088:
+    parent: turret_minor_firing_system
+    xyz: [0.0, 0.20667, 0.0]
+    rpy: [0, 0, -3.1415926535]
+    source: mcb sentry_turret_constants.hpp TURRET_MCB1_BMI088_MOUNTING_TRANSFORM
+  turret_mcb1_ism330:
+    parent: turret_minor_firing_system
+    xyz: [0.00868, 0.1734, 0.0]
+    rpy: [0, 0, -1.5707963]
+    source: mcb sentry_turret_constants.hpp TURRET_MCB1_ISM330_MOUNTING_TRANSFORM
+  # Cameras (pose: x forward, y left, z up, as hw-emulator's camera elements).
+  turret_camera:
+    parent: turret_minor_firing_system
+    xyz: [0.13552, 0.0325, 0.04885]
+    rpy: [0.0, 0.0, 0.0]
+    source: otto sentry_name_config.yaml turret_geometry.0.turret_reference_to_camera_transform
+  arducam:
+    parent: base_link
+    xyz: [0.008, -0.172, 0.0]
+    rpy: [0.0, 0.0, -1.5707]
+    source: otto sentry_name_config.yaml arducam_cameras[0].base_reference_to_camera_transform
+    note: otto's "base reference" is taken to be the chassis (base_link) -- check
+  # The two LD19 lidars (otto autonav).
+  lidar_front:
+    parent: base_link
+    xyz: [0.135, 0.0, 0.0]
+    rpy: [0.0, 0.0, -1.5707]
+    source: otto sentry_name_config.yaml autonav.lidars[0] (port 1-4.1:1.0)
+  lidar_back:
+    parent: base_link
+    xyz: [-0.135, 0.0, 0.0]
+    rpy: [0.0, 0.0, 1.5707]
+    source: otto sentry_name_config.yaml autonav.lidars[1] (port 1-4.4:1.0)
+
+# Omni wheels: the vendored wheels are solid, so each gets passive rollers
+# around its rim (two staggered rows, so one is always in contact), and the
+# wheel's own collision shape is removed: the rollers are what touch the floor.
+omni_wheels:
+  wheels: [fl_wheel, fr_wheel, bl_wheel, br_wheel]
+  wheel_radius: 0.07586        # the vendored primitives' wheel cylinder (outer radius)
+  rollers_per_row: 9
+  rows: 2
+  row_spacing: 0.032           # along the axle, between the two rows' centres (more than a roller diameter, so rows never touch)
+  roller_shape: sphere         # no edges to catch the floor; two staggered rows keep the
+                               # rolling radius within ~1 mm of the wheel's
+  roller_radius: 0.014
+  roller_length: 0.028         # cylinder rollers only
+  roller_mass: 0.012
+  roller_friction_damping: 0.0001
+  estimated: true              # roller sizes estimated from the omni_wheel mesh
+
+# Flywheels and the agitator: the firmware closes speed and position loops on
+# them, but the vendored URDF has no such links. Masses and inertias estimated.
+mechanisms:
+  flywheel_left:
+    parent: turret_minor_firing_system
+    xyz: [0.10, 0.03, 0.03]
+    axis: [0, 0, 1]
+    mass: 0.10
+    inertia: [4.0e-5, 4.0e-5, 6.0e-5]
+    estimated: true
+  flywheel_right:
+    parent: turret_minor_firing_system
+    xyz: [0.10, -0.03, 0.03]
+    axis: [0, 0, -1]
+    mass: 0.10
+    inertia: [4.0e-5, 4.0e-5, 6.0e-5]
+    estimated: true
+  agitator:
+    parent: turret_minor_frame
+    xyz: [0.0, 0.0, 0.18]
+    axis: [0, 0, 1]
+    mass: 0.15
+    inertia: [1.5e-4, 1.5e-4, 2.5e-4]
+    estimated: true
+
+# Armor plates, for otto's detector: RMUL small armor (plate 135 x 125 mm)
+# with a light bar along each side. Placement on the sentry estimated from the
+# chassis mesh (four plates, one per side, tilted back 15 degrees).
+armor:
+  team_color: blue             # the light bars: blue or red
+  plate: {width: 0.135, height: 0.125, thickness: 0.004, rgba: [0.15, 0.15, 0.15, 1]}
+  light_bar: {width: 0.012, height: 0.055, thickness: 0.008, offset: 0.0735}
+  sticker: {width: 0.06, height: 0.07, rgba: [0.9, 0.9, 0.9, 1]}
+  plates:
+    armor_front: {parent: base_link, xyz: [0.30, 0.0, 0.10], rpy: [0, 0.2618, 0], id: 7}
+    armor_left:  {parent: base_link, xyz: [0.0, 0.30, 0.10], rpy: [0, 0.2618, 1.5708], id: 7}
+    armor_back:  {parent: base_link, xyz: [-0.30, 0.0, 0.10], rpy: [0, 0.2618, 3.1416], id: 7}
+    armor_right: {parent: base_link, xyz: [0.0, -0.30, 0.10], rpy: [0, 0.2618, -1.5708], id: 7}
+  estimated: true

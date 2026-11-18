@@ -1,0 +1,14 @@
+[submodule "achilles"]
+	path = achilles
+	url = https://github.com/EricJGoossen/Achilles.git
+	branch = claude/hwemu-support
+[submodule "hw-emulator"]
+	path = hw-emulator
+	url = https://github.com/EricJGoossen/hw-emulator.git
+	branch = main
+[submodule "aruw-mcb"]
+	path = aruw-mcb
+	url = https://gitlab.com/aruw/controls/aruw-mcb.git
+[submodule "project-otto"]
+	path = project-otto
+	url = https://gitlab.com/aruw/vision/project-otto.git
