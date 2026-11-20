@@ -2,12 +2,16 @@
 # Runs the sentry in simulation: the hub, then the MCB firmware, then otto, as
 # separate processes against one simulated robot.
 #
-#   scripts/run.sh [--backend achilles|mujoco] [--window] [--lockstep]
+#   scripts/run.sh [--backend achilles|mujoco] [--window [--window-hz N]] [--lockstep]
 #                  [--debug mcb|otto|hub] [--rr] [--seconds N] [--no-build]
 #                  [--profile debug|release] [--compare] [--no-otto] [--no-mcb]
 #
 #   --backend     the physics backend (default achilles)
-#   --window      open the backend's window (needs DISPLAY; WSLg works)
+#   --window      open the sensor windows sim.yaml lists under `windows:` (the
+#                 sentry's: the RealSense's image), via DISPLAY (WSLg works).
+#                 They draw on the hub's thread, so they cost sim speed: drawn
+#                 at 30 Hz with 8 llvmpipe threads, about 10% of the rate
+#   --window-hz N how often the windows draw (default 30; fewer: faster sim)
 #   --lockstep    the hub ticks only once the MCB and otto have acked the last
 #                 tick (sim time stops when either does); default: real time
 #   --debug X     run X under a debugger and wait for VS Code to attach
@@ -26,7 +30,7 @@
 #                 rendering it, 1280x800 at 120 Hz, costs more than the rest of
 #                 the hub. Not with --compare.
 #
-# The hub's camera rendering uses one llvmpipe thread (LP_NUM_THREADS=1): with
+# Headless, the hub's camera rendering uses one llvmpipe thread (LP_NUM_THREADS=1): with
 # the hub, the firmware and otto all busy, more render threads only fight
 # over cores. Set LP_NUM_THREADS to override.
 #
@@ -46,7 +50,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 backend=achilles window=0 lockstep=0 debug="" rr=0 seconds="" build=1 profile=debug compare=0
-want_otto=1 want_mcb=1 no_arducam=0
+want_otto=1 want_mcb=1 no_arducam=0 window_hz=""
 orig_args=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,6 +58,8 @@ while [ $# -gt 0 ]; do
     --backend=*) backend="${1#*=}"; shift ;;
     --window) window=1; shift ;;
     --headless) window=0; shift ;;
+    --window-hz) window_hz="$2"; shift 2 ;;
+    --window-hz=*) window_hz="${1#*=}"; shift ;;
     --lockstep) lockstep=1; shift ;;
     --debug) debug="$2"; shift 2 ;;
     --debug=*) debug="${1#*=}"; shift ;;
@@ -140,7 +146,11 @@ PY
 fi
 hub_args=(--sim "$sim_yaml" --devices "$devices_yaml" --backend "$backend"
           --runtime-dir "$RT" --status 5)
-if [ "$window" = 1 ]; then hub_args+=(--window); else hub_args+=(--headless); fi
+if [ "$window" = 1 ]; then
+  hub_args+=(--window --draw-period "$(awk -v hz="${window_hz:-30}" 'BEGIN { print 1 / hz }')")
+else
+  hub_args+=(--headless)
+fi
 [ -n "$seconds" ] && hub_args+=(--seconds "$seconds")
 if [ "$lockstep" = 1 ]; then
   hub_args+=(--lockstep)
@@ -177,6 +187,9 @@ stop_all() {
 trap 'echo "[run] stopping" >&2; stop_all; scripts/gaps.sh "$RT" || true; exit 130' INT TERM
 
 # --- hub ---------------------------------------------------------------------
+# One llvmpipe thread headless; the sensor windows render on the hub's
+# thread too, and need more (see --window).
+lp_threads="${LP_NUM_THREADS:-$([ "$window" = 1 ] && echo 8 || echo 1)}"
 if [ "$compare" = 1 ]; then
   # The same hub, in-process, with the comparison printed beside it.
   cmp_args=(--backend "$backend" --runtime-dir "$RT")
@@ -189,9 +202,9 @@ if [ "$compare" = 1 ]; then
   start hub python3 -u scripts/compare.py "${cmp_args[@]}"
 elif [ "$debug" = hub ]; then
   echo "[run] hub: waiting for a debugger on :2347 (VS Code: \"Attach hub\")" >&2
-  start hub env LP_NUM_THREADS="${LP_NUM_THREADS:-1}" gdbserver --once :2347 "$HUB" "${hub_args[@]}"
+  start hub env LP_NUM_THREADS="$lp_threads" gdbserver --once :2347 "$HUB" "${hub_args[@]}"
 else
-  start hub env LP_NUM_THREADS="${LP_NUM_THREADS:-1}" "$HUB" "${hub_args[@]}"
+  start hub env LP_NUM_THREADS="$lp_threads" "$HUB" "${hub_args[@]}"
 fi
 
 # Wait for the hub's ports.

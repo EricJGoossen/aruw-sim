@@ -24,3 +24,10 @@ clock:
   dt: 0.001
   rate: 1.0
 status_period: 0
+# The windows run.sh --window opens; headless, the hub ignores them. Each is
+# a sensor's view (view: image or depth for a camera, lidar for a lidar, plot
+# for a reading or a motor), and each costs the hub time on every draw. The
+# lidars aren't shown: they're mounted inside the chassis, so for now every
+# return is the robot itself.
+windows:
+  - {sensor: turret_camera_image, view: image, title: "RealSense (turret)"}

@@ -38,7 +38,7 @@ mkdir -p "$repo/build/home"
 # Pass through the knobs the scripts read.
 env_flags=()
 while IFS='=' read -r name _; do
-  case "$name" in ARUW_SIM_*|HWEMU_*|UV_*|PYTHON*) env_flags+=(-e "$name") ;; esac
+  case "$name" in ARUW_SIM_*|HWEMU_*|UV_*|PYTHON*|LP_NUM_THREADS) env_flags+=(-e "$name") ;; esac
 done < <(env)
 
 exec docker run --rm "${tty_flags[@]}" --init \
