@@ -5,7 +5,7 @@
 [submodule "hw-emulator"]
 	path = hw-emulator
 	url = https://github.com/EricJGoossen/hw-emulator.git
-	branch = claude/window-fixes
+	branch = main
 [submodule "aruw-mcb"]
 	path = aruw-mcb
 	url = https://gitlab.com/aruw/controls/aruw-mcb.git
