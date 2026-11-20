@@ -16,7 +16,9 @@ elements_to_arow.py wrote) in place, and writes one .arow per group beside
 it, included from it. A group is two or more leaf joints under the same
 parent, with the same fields, that no sensor or actuator attaches to (a
 part's `attach:` names its joint, and a packed joint's name is gone).
-Everything else stays where it was. Running it on an already-packed model
+Joints that differ in collision_group or collision_mask are never packed
+together (Achilles filters pairs by copy 0's). Everything else stays where
+it was. Running it on an already-packed model
 changes nothing.
 """
 import argparse
@@ -69,19 +71,28 @@ def main():
     attached = _attached_joints(args.model_dir, includes)
     children = collections.Counter(j.get("parent") for j in joints)
 
-    groups = collections.OrderedDict()  # (parent, field names) -> [joint]
+    # Copies share their collision filtering: Achilles's pair filter reads an
+    # archetype's collision_group and collision_mask from copy 0 for every
+    # copy, so joints that differ in them (a field's walls and its drawn-only
+    # markings) go in separate groups.
+    groups = collections.OrderedDict()  # (parent, field names, filter) -> [joint]
     for j in joints:
         if children[j["name"]] or j["name"] in attached or j.get("parent") is None:
             continue
-        groups.setdefault((j["parent"], tuple(j["fields"])), []).append(j)
+        f = j["fields"]
+        filter_key = repr((f.get("collision_group"), f.get("collision_mask")))
+        groups.setdefault((j["parent"], tuple(f), filter_key), []).append(j)
     groups = collections.OrderedDict((k, v) for k, v in groups.items() if len(v) >= 2)
     if not groups:
         print(f"lane_pack_arow: nothing to pack in {path}")
         return 0
 
     packed = set()
-    for n, ((parent, fields), members) in enumerate(groups.items()):
-        name = f"{args.archetype}_{parent}_copies" + (f"_{n}" if sum(k[0] == parent for k in groups) > 1 else "")
+    per_parent = collections.Counter(k[0] for k in groups)
+    seen = collections.Counter()
+    for (parent, fields, _), members in groups.items():
+        seen[parent] += 1
+        name = f"{args.archetype}_{parent}_copies" + (f"_{seen[parent]}" if per_parent[parent] > 1 else "")
         values = {}
         for f in fields:
             per = [m["fields"][f] for m in members]
