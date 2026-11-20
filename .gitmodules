@@ -1,11 +1,11 @@
 [submodule "achilles"]
 	path = achilles
 	url = https://github.com/EricJGoossen/Achilles.git
-	branch = claude/hwemu-support
+	branch = claude/realtime-integration
 [submodule "hw-emulator"]
 	path = hw-emulator
 	url = https://github.com/EricJGoossen/hw-emulator.git
-	branch = main
+	branch = claude/realtime-harness
 [submodule "aruw-mcb"]
 	path = aruw-mcb
 	url = https://gitlab.com/aruw/controls/aruw-mcb.git

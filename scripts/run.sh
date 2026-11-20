@@ -21,6 +21,14 @@
 #   --compare     run the hub in-process under scripts/compare.py, which prints
 #                 the firmware's belief (its odometry) next to sim truth
 #   --no-otto / --no-mcb   leave one out
+#   --no-arducam  leave the Arducam out of the sim (its device and its camera):
+#                 otto doesn't read it by default (arducam_aruco: False), and
+#                 rendering it, 1280x800 at 120 Hz, costs more than the rest of
+#                 the hub. Not with --compare.
+#
+# The hub's camera rendering uses one llvmpipe thread (LP_NUM_THREADS=1): with
+# the hub, the firmware and otto all busy, more render threads only fight
+# over cores. Set LP_NUM_THREADS to override.
 #
 # Logs go to <run dir>/logs/<process>.log, and the console shows every line
 # prefixed with its process. One Ctrl-C stops all three; if one exits, the
@@ -38,7 +46,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 backend=achilles window=0 lockstep=0 debug="" rr=0 seconds="" build=1 profile=debug compare=0
-want_otto=1 want_mcb=1
+want_otto=1 want_mcb=1 no_arducam=0
 orig_args=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -58,6 +66,7 @@ while [ $# -gt 0 ]; do
     --compare) compare=1; shift ;;
     --no-otto) want_otto=0; shift ;;
     --no-mcb) want_mcb=0; shift ;;
+    --no-arducam) no_arducam=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) echo "run.sh: unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
@@ -103,7 +112,33 @@ participants=()
 lock_env=()
 if [ "$lockstep" = 1 ]; then lock_env=(HWEMU_LOCKSTEP=1); fi
 
-hub_args=(--sim assets/sentry/sim.yaml --devices assets/sentry/devices.yaml --backend "$backend"
+sim_yaml=assets/sentry/sim.yaml devices_yaml=assets/sentry/devices.yaml
+if [ "$no_arducam" = 1 ]; then
+  # This run's sim.yaml and devices.yaml, and a copy of the Achilles model,
+  # without the Arducam's device and camera.
+  python3 - "$repo" "$B" "$RT/model" <<'PY'
+import os, shutil, sys, yaml
+repo, build, out = sys.argv[1:4]
+assets = f"{repo}/assets/sentry"
+os.makedirs(out, exist_ok=True)
+dev = yaml.safe_load(open(f"{assets}/devices.yaml"))
+dev["plugins"] = [os.path.normpath(os.path.join(assets, p)) for p in dev.get("plugins", [])]
+dev["devices"] = [d for d in dev["devices"] if d.get("type") != "arducam"]
+yaml.safe_dump(dev, open(f"{out}/devices.yaml", "w"), sort_keys=False)
+sim = yaml.safe_load(open(f"{assets}/sim.yaml"))
+for k in ("urdf", "arow", "achilles_config"):
+    sim["models"][k] = os.path.normpath(os.path.join(assets, sim["models"][k]))
+model = f"{out}/achilles"
+shutil.copytree(os.path.dirname(sim["models"]["arow"]), model)
+arow = os.path.join(model, os.path.basename(sim["models"]["arow"]))
+text = open(arow).read().replace("  - parts/arducam_image.arow\n", "").replace("- parts/arducam_image.arow\n", "")
+open(arow, "w").write(text)
+sim["models"]["arow"] = arow
+yaml.safe_dump(sim, open(f"{out}/sim.yaml", "w"), sort_keys=False)
+PY
+  sim_yaml="$RT/model/sim.yaml" devices_yaml="$RT/model/devices.yaml"
+fi
+hub_args=(--sim "$sim_yaml" --devices "$devices_yaml" --backend "$backend"
           --runtime-dir "$RT" --status 5)
 if [ "$window" = 1 ]; then hub_args+=(--window); else hub_args+=(--headless); fi
 [ -n "$seconds" ] && hub_args+=(--seconds "$seconds")
@@ -154,9 +189,9 @@ if [ "$compare" = 1 ]; then
   start hub python3 -u scripts/compare.py "${cmp_args[@]}"
 elif [ "$debug" = hub ]; then
   echo "[run] hub: waiting for a debugger on :2347 (VS Code: \"Attach hub\")" >&2
-  start hub gdbserver --once :2347 "$HUB" "${hub_args[@]}"
+  start hub env LP_NUM_THREADS="${LP_NUM_THREADS:-1}" gdbserver --once :2347 "$HUB" "${hub_args[@]}"
 else
-  start hub "$HUB" "${hub_args[@]}"
+  start hub env LP_NUM_THREADS="${LP_NUM_THREADS:-1}" "$HUB" "${hub_args[@]}"
 fi
 
 # Wait for the hub's ports.

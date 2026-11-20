@@ -246,7 +246,7 @@ index 0397422..0774607 100644
      sentry_control::registerSentrySubsystems(drivers);
      sentry_control::setDefaultSentryCommands(drivers);
 diff --git a/aruw-mcb-project/src/main.cpp b/aruw-mcb-project/src/main.cpp
-index e3ea048..40faa64 100644
+index e3ea048..85fa3a6 100644
 --- a/aruw-mcb-project/src/main.cpp
 +++ b/aruw-mcb-project/src/main.cpp
 @@ -20,6 +20,9 @@
@@ -281,6 +281,18 @@ index e3ea048..40faa64 100644
          // do this as fast as you can
          PROFILE(drivers->profiler, updateIo, (drivers));
  
+@@ -117,6 +128,11 @@ int main()
+             PROFILE(drivers->profiler, drivers->djiMotorTxHandler.encodeAndSendCanData, ());
+             drivers->update();
+         }
++#if defined(PLATFORM_HOSTED) && defined(HWEMU)
++        // In lockstep the sim clock stands still until the next tick, so
++        // this delay would only spend wall time.
++        if (!tap::hwemu::inLockstep())
++#endif
+         modm::delay_us(10);
+     }
+     return 0;
 diff --git a/aruw-mcb-project/taproot/src/tap/board/board.hpp b/aruw-mcb-project/taproot/src/tap/board/board.hpp
 index 98661d6..d665fd6 100644
 --- a/aruw-mcb-project/taproot/src/tap/board/board.hpp
@@ -334,10 +346,10 @@ index 98661d6..d665fd6 100644
      // init clock
 diff --git a/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.cpp b/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.cpp
 new file mode 100644
-index 0000000..013d85d
+index 0000000..fa541d4
 --- /dev/null
 +++ b/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.cpp
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,356 @@
 +/*
 + * Copyright (c) 2026 Advanced Robotics at the University of Washington <robomstr@uw.edu>
 + *
@@ -677,6 +689,8 @@ index 0000000..013d85d
 +    }
 +}
 +
++bool inLockstep() { return g_lockstep >= 0; }
++
 +}  // namespace tap::hwemu
 +
 +// modm's hosted clocks are weak: on the hub's sim time, so every taproot
@@ -694,10 +708,10 @@ index 0000000..013d85d
 +#endif  // PLATFORM_HOSTED && HWEMU
 diff --git a/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.hpp b/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.hpp
 new file mode 100644
-index 0000000..b4f86f1
+index 0000000..7a8ff83
 --- /dev/null
 +++ b/aruw-mcb-project/taproot/src/tap/board/hwemu_hal.hpp
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,188 @@
 +/*
 + * Copyright (c) 2026 Advanced Robotics at the University of Washington <robomstr@uw.edu>
 + *
@@ -790,6 +804,10 @@ index 0000000..b4f86f1
 +// hub tick every HWEMU_LOOPS_PER_TICK calls (and acks the last). Otherwise
 +// returns at once.
 +void loopTick();
++// Whether this run is in lockstep with the hub (decided by the first
++// loopTick()). Sim time then moves only between ticks, so a wall-clock delay
++// in the main loop costs time and does nothing.
++bool inLockstep();
 +
 +// ---- modm-shaped stand-ins for the Board's peripherals --------------------
 +

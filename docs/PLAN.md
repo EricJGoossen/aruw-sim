@@ -243,12 +243,30 @@ exercised: `--debug otto` with a real VS Code attach, `--debug hub` and
 4. **Achilles camera room 1280×800** (on the branch you're reviewing):
    about 14 MB per camera instead of 13. The alternative is rendering the
    Arducam at 1280×720 in the sim.
-5. **Speed.** In the container, with software GL (llvmpipe), the full stack
-   runs at roughly 0.25–0.55× real time: Achilles slower, MuJoCo faster.
-   The cameras are the likely cost (Arducam 1280×800 at 120 Hz, D435 at
-   60 Hz), but I haven't profiled it. Lockstep keeps results independent of
-   speed. Options: GPU passthrough into the container (the earlier session
-   saw a black viewer with it), or lower sim camera rates.
+5. **Speed.** In lockstep with the MCB and otto, Achilles with one camera
+   (`scripts/run.sh --lockstep --no-arducam`) runs at about 1.25x real
+   time in the container, with software GL. What it took:
+   - **Achilles:** the `claude/realtime-integration` branch (Newton contact
+     solver with early exit, lane-packed copies, blocked 6x6 fields), with
+     the hub built `-O3 -march=native`; the model step regroups each
+     wheel's rollers and the armor shapes as archetype copies
+     (`tools/lane_pack_arow.py`).
+   - **The handoffs:** every firmware SPI/GPIO/ADC call and every lockstep
+     tick is a socket round trip, and on WSL waking from a blocking wait
+     costs tens of microseconds each. hw-emulator now spins briefly before
+     sleeping on both ends, and skips GPIO/PWM writes the pin already
+     holds. The firmware's main-loop `modm::delay_us(10)`, a wall-clock
+     sleep, is skipped in lockstep (`patches/aruw-mcb.patch`).
+   - **Rendering:** llvmpipe with one thread (`LP_NUM_THREADS=1`, set by
+     `run.sh`) renders faster than with a thread per core, which only
+     fight the hub, firmware and otto for cores.
+   - **Not yet:** the Arducam (1280x800 at 120 Hz) costs more than the rest
+     of the hub; leave it out with `--no-arducam`, as otto doesn't read it
+     (`arducam_aruco: False`). The WSL GPU (Mesa d3d12) renders Achilles'
+     cameras black, so it can't replace llvmpipe yet.
+   - **Reproducibility:** two lockstep runs of the same build agree for the
+     first ~2 sim s, then drift apart, as before these changes (otto's
+     threads).
 6. **Pre-existing, not sim-introduced: message type 14 is dropped by
    otto.**
    - The MCB's `VisionCoprocessor::sendBulletsRemaining()` sends type 14

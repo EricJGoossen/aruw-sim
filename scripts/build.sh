@@ -127,7 +127,8 @@ PY
     echo "  doctored URDFs up to date"
   fi
   h="$(inputs_hash "$OUT/sentry_achilles.urdf" "$ASSETS/devices.yaml" "$ASSETS/sim.yaml" \
-        achilles/tools/urdf_to_arow.py hw-emulator/tools/elements_to_arow.py hw-emulator/presets/*.yaml)"
+        achilles/tools/urdf_to_arow.py hw-emulator/tools/elements_to_arow.py hw-emulator/presets/*.yaml \
+        tools/lane_pack_arow.py)"
   if ! stamp_ok arow "$h" || [ ! -f "$OUT/achilles/sentry.arow" ]; then
     rm -rf "$OUT/achilles"
     python3 achilles/tools/urdf_to_arow.py "$OUT/sentry_achilles.urdf" "$OUT/achilles" \
@@ -135,6 +136,9 @@ PY
     python3 hw-emulator/tools/elements_to_arow.py --devices "$ASSETS/devices.yaml" --sim "$ASSETS/sim.yaml" \
         --archetype sentry --robot "$OUT/achilles/sentry.arow" --out "$OUT/achilles/parts" \
         --gaps "$OUT/achilles/model_gaps.jsonl"
+    # Sibling bodies (each wheel's rollers, the armor shapes) as archetype
+    # copies, so Achilles runs them in SIMD lanes: about 3-4x faster physics.
+    python3 tools/lane_pack_arow.py "$OUT/achilles"
     stamp_set arow "$h"
   else
     echo "  Achilles model up to date"
@@ -146,14 +150,20 @@ fi
 CMB="$B/cmake"
 if want cmake; then
   step "cmake (hub, Achilles, MuJoCo, Python module, aruw_devices) -j $jobs"
-  # The hub stays optimised (with debug info) in both profiles: Achilles at
-  # -O0 is too slow to step the sentry, rollers and all, in real time.
-  # ARUW_SIM_HUB_O0=1 builds it at -O0 for stepping through the hub itself.
-  btype=RelWithDebInfo; [ "${ARUW_SIM_HUB_O0:-0}" = "1" ] && btype=Debug
+  # The hub is fully optimised in both profiles (-O3, and every instruction
+  # this host has: AVX2 gives Achilles 8 lanes instead of 4), since lockstep
+  # runs in real time only with it: Achilles at -O0, or even at -O2 without
+  # -march, is too slow to step the sentry, rollers and all. No debug info:
+  # it pushes the heaviest Achilles files past what a build job may use.
+  # ARUW_SIM_HUB_O0=1 builds it at -O0 for stepping through the hub itself;
+  # ARUW_SIM_HUB_FLAGS overrides the extra flags (e.g. "" for a portable build).
+  btype=Release; [ "${ARUW_SIM_HUB_O0:-0}" = "1" ] && btype=Debug
+  hub_flags="${ARUW_SIM_HUB_FLAGS--march=native}"
   launcher=(); command -v ccache >/dev/null && launcher=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
-  if [ ! -f "$CMB/build.ninja" ] || [ "$(grep -s '^CMAKE_BUILD_TYPE:' "$CMB/CMakeCache.txt" | cut -d= -f2)" != "$btype" ]; then
+  if [ ! -f "$CMB/build.ninja" ] || [ "$(grep -s '^CMAKE_BUILD_TYPE:' "$CMB/CMakeCache.txt" | cut -d= -f2)" != "$btype" ] ||
+     [ "$(grep -s '^CMAKE_CXX_FLAGS:' "$CMB/CMakeCache.txt" | cut -d= -f2-)" != "$hub_flags" ]; then
     cmake -S . -B "$CMB" -G Ninja -DCMAKE_BUILD_TYPE="$btype" -DHWEMU_WITH_PYTHON=ON \
-        -DFETCHCONTENT_BASE_DIR="$B/_deps" "${launcher[@]}"
+        -DCMAKE_CXX_FLAGS="$hub_flags" -DFETCHCONTENT_BASE_DIR="$B/_deps" "${launcher[@]}"
   fi
   ninja -C "$CMB" -j "$jobs"
 fi
