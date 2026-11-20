@@ -16,11 +16,13 @@ urdf:
   mujoco: sentry_description/urdf/sentry_coarse_standalone.urdf   # convex-hull collision meshes
   achilles: sentry_description/urdf/sentry_primitives.urdf        # boxes and cylinders
 
-# The robot drives: a floating base on a floor, starting where the MCB's
-# odometry thinks it starts (sentry_chassis_constants.hpp
-# INITIAL_CHASSIS_POSITION_X/Y), with the base_footprint on the ground.
+# The robot drives: a floating base on the 2026 ARC 3v3 field (its own file,
+# relative to this one; the world frame is the field's and the MCB's
+# odometry's), starting where the MCB's odometry thinks it starts
+# (sentry_chassis_constants.hpp INITIAL_CHASSIS_POSITION_X/Y: the red
+# Resupply Zone's centre), with the base_footprint on the ground.
 world:
-  floor: {size: [12.0, 8.0], thickness: 0.1}
+  field: ../field/arc2026_3v3.yaml
   spawn: {xyz: [0.75, 4.0, 0.0], rpy: [0, 0, 0]}
   source: mcb sentry_chassis_constants.hpp INITIAL_CHASSIS_POSITION_X/Y
 

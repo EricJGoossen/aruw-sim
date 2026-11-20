@@ -1,0 +1,102 @@
+# The 2026 ARC 3v3 Battlefield, from "2026 ARCC Rules: Events" section 3.2
+# (Figures 3-3 to 3-10). tools/doctor_urdf.py builds it into the world link
+# of the doctored URDFs, so MuJoCo and Achilles get the same field.
+#
+# Frame: metres, z up, origin at the corner on the red side where the
+# Figure 3-10 dimensions start; x along the 12 m length (red at x < 6), y
+# along the 8 m width (High Ground at y = 8, the Bumpy Road at y = 0). It's
+# the MCB's odometry frame: the sentry spawns at the red Resupply Zone's
+# centre (0.75, 4.0) (urdf_doctor.yaml world.spawn).
+#
+# The rules give the field to +-10%, and a few heights only on the side
+# elevation; each element says where its numbers come from. otto's own map
+# (project-otto autonav/map ARC2026Field) uses the same wall footprints.
+#
+# Element kinds, each in the field frame:
+#   box:  [[x0, y0, z0], [x1, y1, z1]], axis-aligned corners
+#   ramp: {x: [x0, x1], y: [y0, y1], rise: H, up: +x|-x|+y|-y}
+#         a wedge from the floor up to H, rising toward `up`; modelled as a
+#         slab whose top face is the slope (both engines take only boxes)
+# mirror: true adds the blue copy, mirrored about x = mirror_x, with
+# `mirror_color` if given. collide: false is drawn only (markings).
+
+length: 12.0
+width: 8.0
+mirror_x: 6.0
+
+colors:
+  floor: [0.42, 0.42, 0.42, 1]
+  base: [0.30, 0.30, 0.30, 1]
+  wall: [0.22, 0.22, 0.24, 1]
+  high_ground: [0.80, 0.80, 0.80, 1]
+  ramp: [0.88, 0.88, 0.88, 1]
+  block: [0.86, 0.86, 0.90, 1]
+  red_zone: [0.62, 0.66, 0.68, 1]
+  red_mark: [0.85, 0.15, 0.15, 1]
+  blue_zone: [0.62, 0.66, 0.68, 1]
+  blue_mark: [0.15, 0.30, 0.85, 1]
+  capture: [0.72, 0.84, 0.76, 1]
+  capture_mark: [0.20, 0.85, 0.20, 1]
+  bumpy: [0.12, 0.12, 0.12, 1]
+  bump: [0.18, 0.18, 0.18, 1]
+
+elements:
+  # The ground: the field plus the base plate the perimeter stands on
+  # (Figure 3-3's outline, about 0.5 m past the 12 m x 8 m field).
+  - {name: floor, box: [[-0.5, -0.5, -0.1], [12.5, 8.5, 0.0]], color: floor}
+
+  # Perimeter: 420 mm (Figure 3-3 side elevation), just outside the field.
+  - {name: perimeter_south, box: [[-0.1, -0.1, 0.0], [12.1, 0.0, 0.42]], color: wall}
+  - {name: perimeter_north, box: [[-0.1, 8.0, 0.0], [12.1, 8.1, 0.42]], color: wall}
+  - {name: perimeter_red, box: [[-0.1, 0.0, 0.0], [0.0, 8.0, 0.42]], color: wall}
+  - {name: perimeter_blue, box: [[12.0, 0.0, 0.0], [12.1, 8.0, 0.42]], color: wall}
+
+  # Near wall, beside the Resupply Zone: x 2250 (Figure 3-3), 170 mm thick
+  # (Figure 3-10: 2250 to 2420), 3025.4 long ending 800 + 2000 below the
+  # far wall's top; 987 above the 420 base (side elevation).
+  - {name: near_wall, box: [[2.25, 2.1746, 0.0], [2.42, 5.2, 1.407]], color: wall, mirror: true}
+  # Far wall, under the High Ground: 1000 past the near wall, 2025.4 long
+  # from y = 6; 250 above the 420 base.
+  - {name: far_wall, box: [[3.42, 3.9746, 0.0], [3.59, 6.0, 0.67]], color: wall, mirror: true}
+
+  # High Ground (Figure 3-6): 1000 mm cells against the north perimeter.
+  # A 210 mm deck, 15 degree end ramps (784 long), a ramp down to the floor
+  # beside the central gap, and the 410 mm centre block (19 mm set back),
+  # a 200 mm step up from the decks.
+  - {name: high_ground_deck_back, box: [[3.0, 7.0, 0.0], [5.0, 8.0, 0.21]], color: high_ground, mirror: true}
+  - {name: high_ground_deck_front, box: [[3.0, 6.0, 0.0], [4.0, 7.0, 0.21]], color: high_ground, mirror: true}
+  - {name: high_ground_end_ramp, ramp: {x: [2.216, 3.0], y: [6.0, 8.0], rise: 0.21, up: +x}, color: ramp, mirror: true}
+  - {name: high_ground_inner_ramp, ramp: {x: [4.0, 4.784], y: [6.0, 7.0], rise: 0.21, up: -x}, color: ramp, mirror: true}
+  - {name: high_ground_centre, box: [[5.0, 7.019, 0.0], [7.0, 8.0, 0.41]], color: high_ground}
+
+  # The block at the front centre: 2000 x 1000, 700 from the south
+  # perimeter (Figure 3-3), two 210 mm modules high (side elevation: 420).
+  - {name: centre_block, box: [[5.0, 0.7, 0.0], [7.0, 1.7, 0.42]], color: block}
+
+  # Markings, drawn only. Resupply Zone 1500 x 2000 against the perimeter
+  # (Figure 3-4), centred on y = 4; Capture Point 2000 x 2000 at the centre
+  # (Figure 3-7). The icons are reduced to a square.
+  - {name: resupply_zone, box: [[0.0, 3.0, 0.0], [1.5, 5.0, 0.002]], color: red_zone, mirror_color: blue_zone,
+     collide: false, mirror: true}
+  - {name: resupply_mark, box: [[0.5, 3.75, 0.002], [1.0, 4.25, 0.003]], color: red_mark, mirror_color: blue_mark,
+     collide: false, mirror: true}
+  - {name: capture_point, box: [[5.0, 3.0, 0.0], [7.0, 5.0, 0.002]], color: capture, collide: false}
+  - {name: capture_mark, box: [[5.75, 3.75, 0.002], [6.25, 4.25, 0.003]], color: capture_mark, collide: false}
+
+# Bumpy Road (Figure 3-9), in front of each half's near corner: rows of
+# 400 mm PVC tiles, 2.5 mm thick, each with four 350 x 45 mm bumps 3.7 mm
+# high, turned 90 degrees tile to tile. Rows from the south, left-aligned at
+# x0 (Figure 3-3: 12 / 11 / 11 / 10 / 10 tiles from the north row down).
+bumpy_road:
+  x0: 0.413
+  y0: 0.161
+  tile: 0.4
+  rows: [10, 10, 11, 11, 12]
+  plate_thickness: 0.0025
+  # The bumps are 3.7 mm: off by default, since each one is a body for the
+  # physics to pair with the robot (about 430 of them); the plates are drawn.
+  bumps: false
+  bump: {length: 0.35, width: 0.045, height: 0.0037, pitch: 0.0988, first: 0.0475}
+  color: bumpy
+  bump_color: bump
+  mirror: true

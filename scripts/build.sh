@@ -108,7 +108,7 @@ ASSETS="$repo/assets/sentry"
 OUT="$B/assets/sentry"
 if want model; then
   step "model"
-  h="$(inputs_hash tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$ASSETS"/sentry_description/urdf/*.urdf)"
+  h="$(inputs_hash tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$ASSETS"/sentry_description/urdf/*.urdf assets/field/*.yaml)"
   if ! stamp_ok doctor "$h" || [ ! -f "$OUT/sentry_mujoco.urdf" ]; then
     # Its gaps are printed and kept, as model gaps, for every run's report.
     python3 tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$OUT" 2>&1 | tee "$OUT.doctor.log"

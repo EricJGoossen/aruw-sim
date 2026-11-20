@@ -91,6 +91,113 @@ def box_geom(parent, tag, size, xyz=(0, 0, 0), rpy=(0, 0, 0), rgba=None, name=No
     return g
 
 
+RAMP_THICKNESS = 0.04  # the slab a ramp is modelled as; its top face is the slope
+
+
+def ramp_box(x, y, rise, up):
+    """A wedge from the floor up to `rise`, rising toward `up` (+x, -x, +y,
+    -y), as a slab: (size, xyz, rpy) of a box whose top face is the slope.
+    Its low end dips below the floor and its high end into whatever it
+    climbs to; neither touches anything there (the field doesn't collide
+    with itself)."""
+    t = RAMP_THICKNESS
+    along_x = up in ("+x", "-x")
+    run = (x[1] - x[0]) if along_x else (y[1] - y[0])
+    a = math.atan2(rise, run)
+    s, c = math.sin(a), math.cos(a)
+    mid = [(x[0] + x[1]) / 2, (y[0] + y[1]) / 2, rise / 2]  # the slope's centre
+    # The slope's upward normal, and the rotation turning the slab's long
+    # axis onto the slope (URDF rpy: R_y(p) takes x to (cos p, 0, -sin p);
+    # R_x(r) takes y to (0, cos r, sin r)).
+    normal, rpy = {
+        "+x": ([-s, 0.0, c], [0.0, -a, 0.0]),
+        "-x": ([s, 0.0, c], [0.0, a, 0.0]),
+        "+y": ([0.0, -s, c], [a, 0.0, 0.0]),
+        "-y": ([0.0, s, c], [-a, 0.0, 0.0]),
+    }[up]
+    length = math.hypot(run, rise)
+    size = [length, y[1] - y[0], t] if along_x else [x[1] - x[0], length, t]
+    xyz = [m - n * t / 2 for m, n in zip(mid, normal)]
+    return size, xyz, rpy
+
+
+def build_field(world_link, field: dict) -> None:
+    """Adds the field (assets/field/*.yaml) to the world link: a collision
+    and a visual per element, a visual only for markings."""
+    colors = field["colors"]
+    mx = field["mirror_x"]
+
+    def add(name, size, xyz, rpy, color, collide):
+        if collide:
+            box_geom(world_link, "collision", size, xyz=xyz, rpy=rpy, name=f"field_{name}")
+        box_geom(world_link, "visual", size, xyz=xyz, rpy=rpy, rgba=colors[color], name=f"field_{name}")
+
+    def add_box(name, lo, hi, color, collide):
+        size = [h - l for l, h in zip(lo, hi)]
+        if min(size) <= 0:
+            raise SystemExit(f"doctor_urdf: field element {name}: empty box {lo} {hi}")
+        add(name, size, [(l + h) / 2 for l, h in zip(lo, hi)], [0, 0, 0], color, collide)
+
+    def mirrored_x(x):
+        return [2 * mx - x[1], 2 * mx - x[0]]
+
+    for el in field["elements"]:
+        copies = [("", False)] + ([("_blue", True)] if el.get("mirror") else [])
+        for suffix, flip in copies:
+            name = el["name"] + suffix
+            color = el.get("mirror_color", el["color"]) if flip else el["color"]
+            collide = el.get("collide", True)
+            if "box" in el:
+                lo, hi = (list(p) for p in el["box"])
+                if flip:
+                    lo[0], hi[0] = 2 * mx - hi[0], 2 * mx - lo[0]
+                add_box(name, lo, hi, color, collide)
+            elif "ramp" in el:
+                r = el["ramp"]
+                x, up = list(r["x"]), r["up"]
+                if flip:
+                    x = mirrored_x(x)
+                    up = {"+x": "-x", "-x": "+x"}.get(up, up)
+                add(name, *ramp_box(x, list(r["y"]), r["rise"], up), color, collide)
+            else:
+                raise SystemExit(f"doctor_urdf: field element {el['name']}: needs box or ramp")
+
+    road = field.get("bumpy_road")
+    if road:
+        tile, b = road["tile"], road["bump"]
+        for suffix, flip in [("", False)] + ([("_blue", True)] if road.get("mirror") else []):
+            for row, count in enumerate(road["rows"]):
+                y = [road["y0"] + row * tile, road["y0"] + (row + 1) * tile]
+                x = [road["x0"], road["x0"] + count * tile]
+                if flip:
+                    x = mirrored_x(x)
+                # The plates are 2.5 mm: drawn, not collided.
+                add_box(f"bumpy_road{suffix}_row{row}", [x[0], y[0], 0.0],
+                        [x[1], y[1], road["plate_thickness"]], road["color"], False)
+                if not road.get("bumps"):
+                    continue
+                for i in range(count):
+                    tx = [road["x0"] + i * tile, road["x0"] + (i + 1) * tile]
+                    if flip:
+                        tx = mirrored_x(tx)
+                    across_x = (row + i) % 2 == 0  # alternate tiles turn their bumps 90 degrees
+                    z = [road["plate_thickness"], road["plate_thickness"] + b["height"]]
+                    for k in range(4):
+                        o = b["first"] + k * b["pitch"]
+                        if across_x:
+                            lo = [tx[0] + (tile - b["length"]) / 2, y[0] + o - b["width"] / 2, z[0]]
+                            hi = [tx[0] + (tile + b["length"]) / 2, y[0] + o + b["width"] / 2, z[1]]
+                        else:
+                            lo = [tx[0] + o - b["width"] / 2, y[0] + (tile - b["length"]) / 2, z[0]]
+                            hi = [tx[0] + o + b["width"] / 2, y[0] + (tile + b["length"]) / 2, z[1]]
+                        add_box(f"bump{suffix}_r{row}_t{i}_{k}", lo, hi, road["bump_color"], True)
+        if not road.get("bumps"):
+            gap("field: the Bumpy Road's 3.7 mm bumps are off (field yaml bumpy_road.bumps): "
+                "the road is flat")
+    gap("field: the Visual Markers (Figure 3-10) aren't modelled: their patterns aren't vendored, "
+        "and the cameras draw solid colours only")
+
+
 def fixed_joint(robot, name, parent, child, xyz, rpy):
     j = sub(robot, "joint", name=name, type="fixed")
     sub(j, "parent", link=parent)
@@ -142,12 +249,9 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
         raise SystemExit(f"doctor_urdf: {src} has {len(roots)} root links; expected one")
     root = roots.pop()
     world = spec["world"]
-    floor = sub(robot, "link", name="world")
-    fx, fy = world["floor"]["size"]
-    t = world["floor"]["thickness"]
-    box_geom(floor, "collision", [fx, fy, t], xyz=[fx / 2 - 1.0, fy / 2 - 1.0, -t / 2], name="floor")
-    box_geom(floor, "visual", [fx, fy, t], xyz=[fx / 2 - 1.0, fy / 2 - 1.0, -t / 2],
-             rgba=[0.55, 0.55, 0.5, 1], name="floor")
+    world_link = sub(robot, "link", name="world")
+    with open(os.path.join(spec_dir, world["field"])) as f:
+        build_field(world_link, yaml.safe_load(f))
     fj = sub(robot, "joint", name="floating_base", type="floating")
     sub(fj, "parent", link="world")
     sub(fj, "child", link=root)
