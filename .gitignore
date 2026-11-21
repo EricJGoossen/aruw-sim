@@ -1,3 +1,5 @@
 build/
 __pycache__/
 *.pyc
+# MuJoCo writes its warnings here, in whatever directory it runs from
+MUJOCO_LOG.TXT

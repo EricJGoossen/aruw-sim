@@ -9,6 +9,8 @@
 [submodule "aruw-mcb"]
 	path = aruw-mcb
 	url = https://gitlab.com/aruw/controls/aruw-mcb.git
+	branch = EricG/sim-integration
 [submodule "project-otto"]
 	path = project-otto
 	url = https://gitlab.com/aruw/vision/project-otto.git
+	branch = feat/comp-branch-sim-integration

@@ -47,7 +47,7 @@ The sim runs one of three otto branches, each with its patch in
 
 | `--otto` | branch | where |
 |---|---|---|
-| `comp` (default) | `2026-Comp-Branch` | the `project-otto` submodule, at its pinned commit |
+| `comp` (default) | `feat/comp-branch-sim-integration` | the `project-otto` submodule, at its pinned commit |
 | `main` | `main` | a worktree in `build/otto-main` |
 | `autonav` | `feature/autonav_framework` (the 2026-27 ROS 2 stack) | a worktree in `build/otto-autonav`, plus its ROS image and packages |
 
@@ -116,8 +116,7 @@ converts it to `.arow`, and hw-emulator's `tools/elements_to_arow.py` turns
 
 `tools/check_model.py` is the only code that reads the MCB headers and otto's
 config; it compares them with the model and **stops the build** on any
-mismatch. Today it reports three, left for the owner to resolve (see
-[docs/PLAN.md](docs/PLAN.md)):
+mismatch. Today it reports three, left for the owner to resolve:
 
 - wheelbase: URDF 0.2216 m vs MCB `WHEELBASE_RADIUS` 0.23864 m;
 - minor yaw travel: URDF ±90° vs firmware ±143.5°;
@@ -126,11 +125,6 @@ mismatch. Today it reports three, left for the owner to resolve (see
 `build.sh` lets exactly those through by default
 (`scripts/known_mismatches.sh`); they're still printed, and
 `HWEMU_ACCEPT_MISMATCH=` (empty) makes the check strict.
-
-## Status
-
-See [docs/PLAN.md](docs/PLAN.md) for what's done, what's open, and the
-decisions waiting on the owner.
 
 ## The 2026-27 autonav stack (`run.sh --autonav`)
 

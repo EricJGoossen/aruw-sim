@@ -1,5 +1,5 @@
 # The model mismatches tools/check_model.py reports today, which you (the
-# owner) are to resolve; see docs/PLAN.md. Sourced by smoke.sh for test runs
+# owner) are to resolve. Sourced by smoke.sh for test runs
 # so they don't stop the build. They are NOT fixed, only let through, and
 # check_model.py still prints each one. For a run of your own:
 #   source scripts/known_mismatches.sh && scripts/run.sh

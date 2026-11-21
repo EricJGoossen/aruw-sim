@@ -8,7 +8,7 @@
 #
 #   scripts/setup.sh [--otto TARGET[,TARGET...]|all] [-j N]
 #
-#   --otto   otto's targets to set up (default comp): comp (2026-Comp-Branch,
+#   --otto   otto's targets to set up (default comp): comp (feat/comp-branch-sim-integration,
 #            the project-otto submodule), main (otto main) and autonav
 #            (feature/autonav_framework, the 2026-27 ROS 2 stack), each with
 #            its patch from patches/project-otto/. See scripts/otto_setup.sh.

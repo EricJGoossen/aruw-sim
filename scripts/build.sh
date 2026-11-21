@@ -19,8 +19,8 @@
 #   otto     otto's venv (uv sync --frozen into build/otto-venv), when
 #            uv.lock or pyproject.toml changed
 #
-# check_model.py stops the build on a mismatch. The three known ones (see
-# docs/PLAN.md, scripts/known_mismatches.sh) are let through by default, and
+# check_model.py stops the build on a mismatch. The three known ones
+# (scripts/known_mismatches.sh) are let through by default, and
 # still printed; HWEMU_ACCEPT_MISMATCH overrides the list (set it empty to
 # let none through).
 #

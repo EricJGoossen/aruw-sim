@@ -2,7 +2,7 @@
 # Sets up one of otto's targets for scripts/run.sh --otto TARGET. Each target
 # is a branch of project-otto with its own patch (patches/project-otto/):
 #
-#   comp     origin/2026-Comp-Branch, in the project-otto submodule itself
+#   comp     origin/feat/comp-branch-sim-integration, in the project-otto submodule itself
 #            (its pinned commit); scripts/build.sh patches it and builds its
 #            venv, so there's nothing more to do here. The default.
 #   main     origin/main: a worktree in build/otto-main, its venv in
@@ -15,8 +15,9 @@
 #   scripts/otto_setup.sh TARGET [REF]     (REF: another commit or branch)
 #
 # The submodule's own checkout is never touched by main or autonav. Re-running
-# fetches and moves the worktree to REF's current commit; a patch that no
-# longer applies there stops it with the file that failed.
+# fetches and moves the worktree to REF's current commit. A patch REF already
+# has (committed upstream) is skipped; one that neither applies nor is already
+# there stops it with the file that failed.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
@@ -43,12 +44,15 @@ else
   git -C "$W" reset -q --hard
   git -C "$W" checkout -q --detach "$ref"
 fi
-if ! git -C "$W" apply --check "$patch" 2>/dev/null; then
-  echo "otto_setup.sh: $(basename "$patch") doesn't apply to $ref ($(git -C "$W" rev-parse --short HEAD)):" >&2
+if git -C "$W" apply --reverse --check "$patch" 2>/dev/null; then
+  echo "[otto] $target: $(basename "$patch") already in $ref"
+elif git -C "$W" apply --check "$patch" 2>/dev/null; then
+  git -C "$W" apply "$patch"
+else
+  echo "otto_setup.sh: $(basename "$patch") neither applies to $ref ($(git -C "$W" rev-parse --short HEAD)) nor is already in it:" >&2
   git -C "$W" apply --check "$patch" >&2 || true
   exit 1
 fi
-git -C "$W" apply "$patch"
 git -C "$W" submodule update -q --init --recursive
 
 if [ "$target" = main ]; then
