@@ -5,7 +5,7 @@
 #   scripts/run.sh [--backend achilles|mujoco] [--window [--window-hz N]] [--lockstep]
 #                  [--debug mcb|otto|hub] [--rr] [--seconds N] [--no-build]
 #                  [--profile debug|release] [--compare] [--no-otto] [--no-mcb]
-#                  [--enemy BEHAVIOR] [--otto comp|main|autonav] [--autonav | --autonav-drive]
+#                  [--enemy BEHAVIOR] [--autonav | --autonav-drive]
 #
 #   --backend     the physics backend (default achilles)
 #   --window      open the sensor windows sim.yaml lists under `windows:` (the
@@ -29,11 +29,6 @@
 #   --compare     run the hub in-process under scripts/compare.py, which prints
 #                 the firmware's belief (its odometry) next to sim truth
 #   --no-otto / --no-mcb   leave one out
-#   --otto T      which otto (patches/project-otto/T.patch): comp, the 2026
-#                 comp branch in the project-otto submodule (the default);
-#                 main; or autonav, the 2026-27 ROS 2 branch (= --autonav).
-#                 main and autonav are set up once with scripts/otto_setup.sh
-#                 (scripts/setup.sh --otto T does).
 #   --enemy B     add an enemy robot (assets/enemy: another sentry, on the
 #                 blue team) that the hub moves by behavior B, one of
 #                 assets/enemy/behaviors/*.yaml (patrol: laps between the
@@ -53,12 +48,12 @@
 #                 HWEMU_ODIN_SEED seeds it, HWEMU_ODIN_WRONG_FIX=1/0 forces
 #                 or rules out a wrong first fix, HWEMU_ODIN_FIRST_FIX_S
 #                 moves its first fix). Set it up once
-#                 with scripts/otto_setup.sh autonav (scripts/setup.sh
-#                 --otto autonav does). Same as --otto autonav. Its logs: logs/ros.log.
+#                 with scripts/setup.sh --autonav (scripts/autonav_setup.sh).
+#                 Its logs: logs/ros.log.
 #                 The branch has no ROS 2 planner yet, so the robot gets no
 #                 paths: it localizes where it stands.
 #   --autonav-drive  --autonav, with the legacy planner driving too (a sim-only
-#                 switch, HWEMU_AUTONAV_LEGACY in patches/project-otto/autonav.patch),
+#                 switch, HWEMU_AUTONAV_LEGACY in the branch's main.py),
 #                 to watch the localization while the robot moves.
 #   --no-arducam  leave the Arducam out of the sim (its device and its camera):
 #                 otto doesn't read it by default (arducam_aruco: False), and
@@ -85,7 +80,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 backend=achilles window=0 lockstep=0 debug="" rr=0 seconds="" build=1 profile=debug compare=0
-want_otto=1 want_mcb=1 no_arducam=0 window_hz="" enemy="" autonav=0 autonav_drive=0 otto_target=comp
+want_otto=1 want_mcb=1 no_arducam=0 window_hz="" enemy="" autonav=0 autonav_drive=0
 orig_args=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -110,8 +105,6 @@ while [ $# -gt 0 ]; do
     --no-arducam) no_arducam=1; shift ;;
     --enemy) enemy="$2"; shift 2 ;;
     --enemy=*) enemy="${1#*=}"; shift ;;
-    --otto) otto_target="$2"; shift 2 ;;
-    --otto=*) otto_target="${1#*=}"; shift ;;
     --autonav) autonav=1; shift ;;
     --autonav-drive) autonav=1 autonav_drive=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
@@ -119,12 +112,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$backend" in achilles|mujoco) ;; *) echo "run.sh: --backend is achilles or mujoco" >&2; exit 2 ;; esac
-case "$otto_target" in comp|main|autonav) ;; *) echo "run.sh: --otto is comp, main or autonav" >&2; exit 2 ;; esac
-[ "$otto_target" = autonav ] && autonav=1
-if [ "$autonav" = 1 ] && [ "$otto_target" = main ]; then
-  echo "run.sh: --autonav runs otto's autonav branch, not --otto main" >&2; exit 2
-fi
-[ "$autonav" = 1 ] && otto_target=autonav
 case "$debug" in ""|mcb|otto|hub) ;; *) echo "run.sh: --debug is mcb, otto or hub" >&2; exit 2 ;; esac
 if [ -n "$enemy" ] && [ ! -f "assets/enemy/behaviors/$enemy.yaml" ]; then
   echo "run.sh: no enemy behavior '$enemy'; there's $(cd assets/enemy/behaviors && ls *.yaml | sed 's/\.yaml$//' | paste -sd, -)" >&2
@@ -139,15 +126,15 @@ if [ -z "${ARUW_SIM_CONTAINER:-}" ] && [ "${ARUW_SIM_NATIVE:-0}" != "1" ] && [ "
 fi
 
 # --autonav: otto and the ROS 2 stack run in their container, next to the
-# hub and the MCB here (scripts/otto_setup.sh autonav made what they need).
+# hub and the MCB here (scripts/autonav_setup.sh made what they need).
 AN_OTTO="$repo/build/otto-autonav" AN_IMAGE="aruw-autonav:humble" AN_WS="$repo/build/autonav-ws/install"
 if [ "$autonav" = 1 ]; then
   [ -n "${ARUW_SIM_CONTAINER:-}" ] && { echo "run.sh: --autonav starts Docker containers: run it on the host" >&2; exit 2; }
   [ "$debug" = otto ] && { echo "run.sh: --autonav can't --debug otto" >&2; exit 2; }
   for f in "$AN_OTTO/project_otto/bridge" "$repo/build/otto-autonav-venv/bin/python" "$AN_WS/setup.bash"; do
-    [ -e "$f" ] || { echo "run.sh: $f is missing; run scripts/otto_setup.sh autonav" >&2; exit 1; }
+    [ -e "$f" ] || { echo "run.sh: $f is missing; run scripts/autonav_setup.sh" >&2; exit 1; }
   done
-  docker image inspect "$AN_IMAGE" >/dev/null 2>&1 || { echo "run.sh: no $AN_IMAGE image; run scripts/otto_setup.sh autonav" >&2; exit 1; }
+  docker image inspect "$AN_IMAGE" >/dev/null 2>&1 || { echo "run.sh: no $AN_IMAGE image; run scripts/autonav_setup.sh" >&2; exit 1; }
   # The hub and the MCB run here, natively (so the containers share their
   # PTYs): the dev image's GL settings, and its libOpenGL if the host has none.
   export LIBGL_ALWAYS_SOFTWARE=1 MESA_GL_VERSION_OVERRIDE=4.5
@@ -179,15 +166,10 @@ if [ $(( ${#RT} + 16 )) -gt 107 ]; then
 fi
 HUB="$B/cmake/hw-emulator/hwemu"
 ELF="$repo/aruw-mcb/aruw-mcb-project/build/sim-hwemu/scons-$profile/TARGET_SENTRY_ACHLYS/aruw-mcb.elf"
-# otto's target (--otto): comp is the submodule; the others are worktrees
-# scripts/otto_setup.sh made.
+# otto: the comp branch in the project-otto submodule, or with --autonav the
+# autonav branch's worktree (scripts/autonav_setup.sh).
 OV="$B/otto-venv" OTTO="$repo/project-otto"
-if [ "$otto_target" != comp ]; then
-  OV="$B/otto-$otto_target-venv" OTTO="$B/otto-$otto_target"
-  if [ "$want_otto" = 1 ] && [ ! -x "$OV/bin/python" ]; then
-    echo "run.sh: otto's $otto_target target isn't set up; run scripts/otto_setup.sh $otto_target" >&2; exit 1
-  fi
-fi
+[ "$autonav" = 1 ] && OV="$B/otto-autonav-venv" OTTO="$AN_OTTO"
 for f in "$HUB" "$ELF" "$OV/bin/python"; do
   [ -e "$f" ] || { echo "run.sh: $f is missing; run scripts/build.sh" >&2; exit 1; }
 done

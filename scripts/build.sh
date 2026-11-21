@@ -4,12 +4,6 @@
 #   scripts/build.sh [--profile debug|release] [--only STEP[,STEP...]] [-j N]
 #
 # Steps, in order (--only picks some):
-#   patches  the submodules' branches (aruw-mcb EricG/sim-integration, otto
-#            feat/comp-branch-sim-integration) carry the sim's hooks; on a
-#            commit that doesn't, apply patches/aruw-mcb.patch and
-#            patches/project-otto/comp.patch. Refuses loudly if one is neither
-#            there nor applies. Otto's other targets (main, autonav) are
-#            worktrees: scripts/otto_setup.sh
 #   model    tools/doctor_urdf.py, then the Achilles model (Achilles's
 #            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py)
 #            and the enemy robot (tools/enemy_model.py, assets/enemy), when
@@ -81,29 +75,6 @@ mkdir -p "$B/stamps"
 inputs_hash() { cat "$@" 2>/dev/null | sha256sum | cut -c1-32; }
 stamp_ok() { [ "$(cat "$B/stamps/$1" 2>/dev/null)" = "$2" ]; }
 stamp_set() { echo "$2" >"$B/stamps/$1"; }
-
-# --- patches -----------------------------------------------------------------
-apply_patch() {
-  local sub="$1" patch="$repo/patches/$2"
-  [ -f "$patch" ] || return 0
-  if git -C "$sub" apply --reverse --check "$patch" 2>/dev/null; then
-    echo "  $sub: has the sim's hooks ($(basename "$patch"))"
-  elif git -C "$sub" apply --check "$patch" 2>/dev/null; then
-    git -C "$sub" apply "$patch"
-    echo "  $sub: applied $(basename "$patch")"
-  else
-    echo "build.sh: $(basename "$patch") neither applies to $sub nor is already applied:" >&2
-    git -C "$sub" apply --check "$patch" >&2 || true
-    echo "  Re-export it from a working tree (git -C $sub diff, plus untracked files), or reset $sub." >&2
-    exit 1
-  fi
-}
-if want patches; then
-  step "patches"
-  # The firmware's emulator hooks, and the firmware bugs the sim found.
-  apply_patch aruw-mcb aruw-mcb.patch
-  apply_patch project-otto project-otto/comp.patch
-fi
 
 # --- model -------------------------------------------------------------------
 ASSETS="$repo/assets/sentry"

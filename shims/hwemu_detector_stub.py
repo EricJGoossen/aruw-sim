@@ -9,7 +9,7 @@ Everything else in otto -- cameras, odometry, lidar, autonav, comms --
 keeps running, and scripts/smoke.sh fails on the gap, so a run never looks
 like working vision when it isn't.
 
-otto's own detector code is untouched: patches/project-otto.patch has no
+otto's own detector code is untouched: its sim-integration branch has no
 detector changes.
 """
 
