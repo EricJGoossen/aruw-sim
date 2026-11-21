@@ -19,8 +19,10 @@
 # joint axis: -1 where the firmware constructs it inverted (DjiMotor
 # isInverted, CanEncoder/Lamprey inverted), which is what that flag
 # compensates for. `encoder_offset` is the raw count a motor reports with its
-# joint at zero: the firmware's calibrated startEncoderValue. tools/
-# check_model.py checks both against the firmware.
+# joint at zero: the firmware's calibrated startEncoderValue, which for an
+# inverted motor counts the other way (taproot reads 8191 - raw), so there
+# it's 8191 - startEncoderValue. tools/check_model.py checks both against
+# the firmware.
 
 plugins:
   - ../../build/cmake/plugins/libaruw_devices.so
@@ -85,7 +87,7 @@ devices:
     type: dji_can_motor
     preset: m3508
     transport: {bus: can2, id: 0x205}
-    params: {direction: -1, reduction: 60.810, encoder_offset: 1060}
+    params: {direction: -1, reduction: 60.810, encoder_offset: 7131}  # 8191 - 1060
     bind:
       motor: major_yaw_motor
       encoder: major_yaw_motor_encoder
@@ -125,7 +127,7 @@ devices:
     type: dji_can_motor
     preset: gm6020_current
     transport: {bus: can1, id: 0x205}
-    params: {encoder_offset: 7357, direction: -1}
+    params: {encoder_offset: 834, direction: -1}  # 8191 - 7357
     bind:
       motor: minor_pitch_motor
       encoder: minor_pitch_encoder

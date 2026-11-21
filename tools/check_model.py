@@ -37,6 +37,7 @@ MCB = os.path.join(ROOT, "aruw-mcb", "aruw-mcb-project", "src", "aruwsrc", "robo
 OTTO_CONFIG = os.path.join(ROOT, "project-otto", "sentry_name_config.yaml")
 DOCTOR = os.path.join(ROOT, "assets", "sentry", "urdf_doctor.yaml")
 
+DJI_ENCODER_COUNTS = 8192  # a DJI motor encoder's counts per turn
 TOL_M = 0.0005   # 0.5 mm
 TOL_RAD = 0.002  # ~0.1 degree
 
@@ -215,14 +216,20 @@ def main() -> int:
         start = turret_h.index(name + " = {", ns)
         return turret_h[start:turret_h.index("};", start)]
 
-    for device, ns, cfg in [("major_yaw_motor", "turretMajor", "YAW_MOTOR_CONFIG"),
-                            ("minor_yaw_motor", "turretWidow", "YAW_MOTOR_CONFIG"),
-                            ("minor_pitch_motor", "turretWidow", "PITCH_MOTOR_CONFIG")]:
+    # startEncoderValue is in the firmware's count, which for an inverted
+    # motor is taproot's 8191 - raw (WrappedEncoder::updateEncoderValue);
+    # encoder_offset is the raw count on the bus.
+    for device, obj, ns, cfg in [("major_yaw_motor", "turretMajorYawMotor", "turretMajor", "YAW_MOTOR_CONFIG"),
+                                 ("minor_yaw_motor", "yawMotor", "turretWidow", "YAW_MOTOR_CONFIG"),
+                                 ("minor_pitch_motor", "pitchMotor", "turretWidow", "PITCH_MOTOR_CONFIG")]:
         block = config_block(ns, cfg)
         start = float(re.search(r"\.startEncoderValue\s*=\s*(\d+)", block).group(1))
+        inverted = flag(ctor[obj][3])
+        raw = DJI_ENCODER_COUNTS - 1 - start if inverted else start
         ours = (devices[device].get("params") or {}).get("encoder_offset", 0)
-        c.same(f"{device}.encoder_offset", ours, start, 0.5, f"assets/sentry/devices.yaml {device} params.encoder_offset",
-               f"aruw-mcb sentry_turret_constants.hpp {ns}::{cfg}.startEncoderValue")
+        c.same(f"{device}.encoder_offset", ours, raw, 0.5, f"assets/sentry/devices.yaml {device} params.encoder_offset",
+               f"aruw-mcb sentry_turret_constants.hpp {ns}::{cfg}.startEncoderValue = {start:.0f}"
+               + (f", inverted: raw {DJI_ENCODER_COUNTS - 1} - {start:.0f}" if inverted else ""))
 
     # Joint travel: the model must allow at least what the firmware commands.
     def angle(text: str) -> float:
