@@ -111,6 +111,7 @@ if want model; then
   h="$(inputs_hash tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$ASSETS"/sentry_description/urdf/*.urdf assets/field/*.yaml)"
   if ! stamp_ok doctor "$h" || [ ! -f "$OUT/sentry_mujoco.urdf" ]; then
     # Its gaps are printed and kept, as model gaps, for every run's report.
+    mkdir -p "$OUT"
     python3 tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$OUT" 2>&1 | tee "$OUT.doctor.log"
     mkdir -p "$OUT"
     python3 - "$OUT.doctor.log" "$OUT/doctor_gaps.jsonl" <<'PY'
