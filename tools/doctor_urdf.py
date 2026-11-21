@@ -248,6 +248,18 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
                 sub(mat, "color", rgba=colors[mat.get("name")])
     if dropped:
         gap(f"{variant}: the vendored CAD visual meshes are not rendered; cameras see collision shapes")
+    for name, o in (spec.get("visual_overrides", {}) if variant == "achilles" else {}).items():
+        link = need_link(name, f"visual override {name}")
+        for v in link.findall("visual"):
+            link.remove(v)
+        v = sub(link, "visual", name=f"{name}_vis")
+        sub(v, "origin", xyz=fmt(o["xyz"]), rpy=fmt(o["rpy"]))
+        geom = sub(v, "geometry")
+        if "cylinder" in o:
+            sub(geom, "cylinder", radius=o["cylinder"]["radius"], length=o["cylinder"]["length"])
+        else:
+            sub(geom, "box", size=fmt(o["box"]))
+        sub(sub(v, "material", name=f"{name}_override"), "color", rgba=fmt(o["rgba"]))
 
     # MuJoCo's importer options.
     for old in robot.findall("mujoco"):

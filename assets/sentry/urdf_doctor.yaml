@@ -102,6 +102,21 @@ frames:
     rpy: [0.0, 0.0, 1.5707]
     source: otto sentry_name_config.yaml autonav.lidars[1] (port 1-4.4:1.0)
 
+# Visuals drawn in place of the primitives URDF's (Achilles draws visuals;
+# MuJoCo, which draws collision shapes, never sees these). Each replaces its
+# link's visuals; the collision shapes stay the URDF's.
+visual_overrides:
+  turret_minor_firing_system:
+    # The URDF's 272 x 60 x 60 mm block swallows the turret camera's mount
+    # (2.5 mm outside its side, inside its height, 54 mm of it in front of
+    # the lens), so the RealSense saw a wall. Drawn as the barrel instead:
+    # a 21 mm tube on the block's axis, the same length.
+    cylinder: {radius: 0.0105, length: 0.272}
+    xyz: [0.054, 0.0, 0.030]
+    rpy: [0.0, 1.5707963, 0.0]
+    rgba: [0.75, 0.75, 0.75, 1.0]
+    source: approximation (the launcher's CAD isn't in the primitives URDF)
+
 # Omni wheels: the vendored wheels are solid, so each gets passive rollers
 # around its rim (two staggered rows, so one is always in contact), and the
 # wheel's own collision shape is removed: the rollers are what touch the floor.
