@@ -5,7 +5,7 @@
 #   scripts/run.sh [--backend achilles|mujoco] [--window [--window-hz N]] [--lockstep]
 #                  [--debug mcb|otto|hub] [--rr] [--seconds N] [--no-build]
 #                  [--profile debug|release] [--compare] [--no-otto] [--no-mcb]
-#                  [--enemy BEHAVIOR] [--autonav | --autonav-drive]
+#                  [--enemy BEHAVIOR] [--arducam] [--autonav | --autonav-drive]
 #
 #   --backend     the physics backend (default achilles)
 #   --window      open the sensor windows sim.yaml lists under `windows:` (the
@@ -55,10 +55,12 @@
 #   --autonav-drive  --autonav, with the legacy planner driving too (a sim-only
 #                 switch, HWEMU_AUTONAV_LEGACY in the branch's main.py),
 #                 to watch the localization while the robot moves.
-#   --no-arducam  leave the Arducam out of the sim (its device and its camera):
-#                 otto doesn't read it by default (arducam_aruco: False), and
-#                 rendering it, 1280x800 at 120 Hz, costs more than the rest of
-#                 the hub. Not with --compare.
+#   --arducam     put the Arducam in the sim (its device and its camera). It's
+#                 left out by default: otto doesn't read it unless its config
+#                 turns arducam_aruco on, and rendering it, 1280x800 at 120 Hz
+#                 on the CPU, takes about twice as long as the rest of the hub,
+#                 so a run with it goes at about a third of real time.
+#                 --compare always has it (it runs the built model as is).
 #
 # Headless, the hub's camera rendering uses one llvmpipe thread (LP_NUM_THREADS=1): with
 # the hub, the firmware and otto all busy, more render threads only fight
@@ -80,7 +82,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 backend=achilles window=0 lockstep=0 debug="" rr=0 seconds="" build=1 profile=debug compare=0
-want_otto=1 want_mcb=1 no_arducam=0 window_hz="" enemy="" autonav=0 autonav_drive=0
+want_otto=1 want_mcb=1 no_arducam=1 window_hz="" enemy="" autonav=0 autonav_drive=0
 orig_args=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -102,7 +104,8 @@ while [ $# -gt 0 ]; do
     --compare) compare=1; shift ;;
     --no-otto) want_otto=0; shift ;;
     --no-mcb) want_mcb=0; shift ;;
-    --no-arducam) no_arducam=1; shift ;;
+    --arducam) no_arducam=0; shift ;;
+    --no-arducam) no_arducam=1; shift ;;  # the default; kept so older commands still work
     --enemy) enemy="$2"; shift 2 ;;
     --enemy=*) enemy="${1#*=}"; shift ;;
     --autonav) autonav=1; shift ;;

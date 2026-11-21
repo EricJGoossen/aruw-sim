@@ -80,12 +80,15 @@ Some others:
 scripts/run.sh --window --enemy patrol      # the turret camera's view, and an enemy sentry to chase
 scripts/run.sh --backend mujoco             # MuJoCo instead of Achilles
 scripts/run.sh --seconds 60                 # stop on its own after 60 s of sim time
+scripts/run.sh --arducam                    # with the Arducam too (about a third of real time)
 scripts/run.sh --autonav-drive              # the 2026-27 ROS 2 autonav stack (below)
 scripts/run.sh --help                       # everything
 ```
 
 `--window` opens windows through your display (WSLg on Windows 11 works as
-is). `run.sh` rebuilds whatever changed before it starts; `--no-build` skips
+is). Runs go at real time. The Arducam is left out unless you ask for it
+(`--arducam`): otto's comp branch doesn't read it, and rendering it on the CPU
+at 1280x800 and 120 Hz slows a run to about a third of real time. `run.sh` rebuilds whatever changed before it starts; `--no-build` skips
 that.
 
 ### If something goes wrong
@@ -128,7 +131,7 @@ network, IPC and display, so windows open and paths match inside and out.
 |---|---|
 | [`build.sh`](scripts/build.sh) `[--profile debug\|release] [--only STEP,…] [-j N]` | doctors the URDF and builds the Achilles model, runs `check_model.py`, builds the hub + Achilles + MuJoCo + `libaruw_devices` (CMake/Ninja/ccache), the firmware (`scons build-sim robot=SENTRY_ACHLYS`) and otto's venv (`uv sync --frozen`). Incremental; `-j 2` by default, capped by memory |
 | [`setup.sh`](scripts/setup.sh) `[--autonav] [-j N]` | everything a fresh clone needs: checks the host, checks out the submodules, runs `build.sh`, and with `--autonav` `autonav_setup.sh` |
-| [`run.sh`](scripts/run.sh) `[--backend achilles\|mujoco] [--window] [--lockstep] [--debug mcb\|otto\|hub] [--rr] [--seconds N] [--compare] [--no-build] [--enemy BEHAVIOR] [--autonav\|--autonav-drive]` | builds, then starts the hub, the MCB and otto; per-process logs in `build/run/<backend>/logs/`, prefixed output on the console; if one dies the rest stop; prints the gap report at the end. `--enemy patrol` adds a blue sentry the hub drives by `assets/enemy/behaviors/patrol.yaml` (default: none). `--autonav` runs the 2026-27 ROS 2 autonav stack instead of the comp branch's (see below) |
+| [`run.sh`](scripts/run.sh) `[--backend achilles\|mujoco] [--window] [--lockstep] [--debug mcb\|otto\|hub] [--rr] [--seconds N] [--compare] [--no-build] [--enemy BEHAVIOR] [--arducam] [--autonav\|--autonav-drive]` | builds, then starts the hub, the MCB and otto; per-process logs in `build/run/<backend>/logs/`, prefixed output on the console; if one dies the rest stop; prints the gap report at the end. `--enemy patrol` adds a blue sentry the hub drives by `assets/enemy/behaviors/patrol.yaml` (default: none). `--autonav` runs the 2026-27 ROS 2 autonav stack instead of the comp branch's (see below) |
 | [`autonav_setup.sh`](scripts/autonav_setup.sh) `[REF]` | for `run.sh --autonav`: a worktree of project-otto `feature/autonav_framework` (or REF) in `build/otto-autonav`, its venv, the `aruw-autonav:humble` image (`docker/autonav`) and its ROS packages in `build/autonav-ws` |
 | [`smoke.sh`](scripts/smoke.sh) `[--seconds 30] [--backend …]` | lockstep, headless runs on each backend, checked: MCB boot, both turret-MCB links and IMU calibration, chassis rotation (truth) and translation (MCB odometry), otto's odometry/lidar/frames/referee, and no gap outside `assets/sentry/known_gaps.yaml` |
 | [`gaps.sh`](scripts/gaps.sh) `[RUN_DIR] [--check]` | a run's gaps from every process (hub, MCB, otto, model), new ones marked; writes `gaps.json` |
