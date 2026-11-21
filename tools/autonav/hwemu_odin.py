@@ -85,7 +85,7 @@ class TruthTail:
 
 
 class Ld19Reader:
-    """Scans from an LD19-protocol byte stream: lists of (ccw angle rad, range m or None)."""
+    """Scans from an LD19-protocol byte stream: (capture ms mod 30000, [(ccw angle rad, range m or None)])."""
 
     def __init__(self, path):
         self._fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
@@ -95,6 +95,7 @@ class Ld19Reader:
         termios.tcflush(self._fd, termios.TCIFLUSH)
         self._buf = b""
         self._scan = []
+        self._scan_ms = None
         self._last_angle = None
 
     def scans(self):
@@ -110,6 +111,7 @@ class Ld19Reader:
                 break
             p = self._buf[i:i + PACKET]
             self._buf = self._buf[i + PACKET:]
+            ms = struct.unpack_from("<H", p, 44)[0]
             start = struct.unpack_from("<H", p, 4)[0] / 100.0
             end = struct.unpack_from("<H", p, 42)[0] / 100.0
             span = (end - start) % 360.0
@@ -117,8 +119,11 @@ class Ld19Reader:
                 d, _ = struct.unpack_from("<HB", p, 6 + 3 * k)
                 cw = start + span * k / 11.0
                 if self._last_angle is not None and cw < self._last_angle - 180.0:
-                    done.append(self._scan)  # wrapped: one revolution
+                    done.append((self._scan_ms, self._scan))  # wrapped: one revolution
                     self._scan = []
+                    self._scan_ms = None
+                if self._scan_ms is None:
+                    self._scan_ms = ms
                 self._last_angle = cw
                 self._scan.append((math.radians(-cw), d / 1000.0 if d > 0 else None))
         return done
@@ -144,7 +149,8 @@ class OdinSim(Node):
         self.create_subscription(Odometry, "/localization/pose", self._on_localization, 10)
         gaps.report("odin", "planar",
                     "the Odin is a 360-degree horizontal lidar ring at its mount (one plane at 0.30 m, "
-                    "not its 3-D cloud); its odometry (TF odom -> imu) is the sim's truth, with no drift")
+                    "not its 3-D cloud) that doesn't see the robot itself (its CAD mount is inside the "
+                    "model's coarse turret major); its odometry (TF odom -> imu) is the sim's truth, with no drift")
 
     def _poll(self):
         for row in self._truth.rows():
@@ -172,10 +178,15 @@ class OdinSim(Node):
             if not os.path.exists(self._port):
                 return
             self._reader = Ld19Reader(self._port)
-        for scan in self._reader.scans():
+        for ms, scan in self._reader.scans():
             if self._now is None:
                 continue
-            self._publish_cloud(scan)
+            # Stamped when the hub cast it (its packets' time, sim ms mod 30000), not when it's
+            # read here: AMCL places the scan with the Odin's pose at that stamp.
+            age = ((round(self._now * 1000) - ms) % 30000) / 1000.0
+            if age > 15.0:
+                age -= 30.0
+            self._publish_cloud(scan, self._now - age)
 
     def _on_localization(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -183,10 +194,10 @@ class OdinSim(Node):
         t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self._loc_log.write(json.dumps({"t": round(t, 4), "x": p.x, "y": p.y, "yaw": yaw}) + "\n")
 
-    def _publish_cloud(self, scan):
+    def _publish_cloud(self, scan, t):
         pts = [(r * math.cos(a), r * math.sin(a), 0.0) for a, r in scan if r is not None]
         msg = PointCloud2()
-        msg.header.stamp = stamp(self._now)
+        msg.header.stamp = stamp(t)
         msg.header.frame_id = "imu"
         msg.height, msg.width = 1, len(pts)
         msg.fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
@@ -196,7 +207,7 @@ class OdinSim(Node):
         self._cloud.publish(msg)
         self._clouds += 1
         if self._clouds in (1, 10) or self._clouds % 100 == 0:
-            self.get_logger().info(f"cloud {self._clouds}: {len(pts)} points at t={self._now:.2f}")
+            self.get_logger().info(f"cloud {self._clouds}: {len(pts)} points, cast at t={t:.3f} (now {self._now:.3f})")
 
 
 def main():

@@ -200,8 +200,11 @@ if autonav == "1":
     odin = {"name": "odin", "type": "ld19_lidar", "transport": {"port": "odin"},
             "params": {"min_range": 0.05, "max_range": 20.0},
             "bind": {"lidar": "odin_scan",
+                     # ignore_robot: its CAD mount is inside the coarse turret major's collision
+                     # shape, so it would see nothing but the robot's insides.
                      "mujoco": {"odin_scan": {"type": "lidar", "body": "odin", "samples": 720,
-                                              "min_range": 0.05, "max_range": 20.0, "period": 0.1}}}}
+                                              "min_range": 0.05, "max_range": 20.0, "period": 0.1,
+                                              "ignore_robot": True}}}}
     dev["devices"].append(odin)
 yaml.safe_dump(dev, open(f"{out}/devices.yaml", "w"), sort_keys=False)
 sim = yaml.safe_load(open(f"{assets}/sim.yaml"))
