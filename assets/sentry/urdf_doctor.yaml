@@ -107,8 +107,23 @@ frames:
 
 # Visuals drawn in place of the primitives URDF's (Achilles draws visuals;
 # MuJoCo, which draws collision shapes, never sees these). Each replaces its
-# link's visuals; the collision shapes stay the URDF's.
+# link's visuals with its collision shapes (from_collision, in rgba), with
+# shapes (box, cylinder or sphere, each with xyz, rpy, rgba), or with the
+# one shape given inline; the collision shapes stay as they are.
 visual_overrides:
+  base_link:
+    # The fitted chassis (collision_overrides), so the cameras see what the
+    # engines collide with and the lidars see -- the open band included.
+    from_collision: true
+    rgba: [0.15, 0.15, 0.15, 1.0]
+  lidar_front: &ld19
+    # An LD19 (54 x 46 x 35 mm): its base below the scan plane, its turning
+    # head on it (the frame's origin). Visual only: nothing collides with it.
+    shapes:
+      - {box: [0.054, 0.046, 0.020], xyz: [0.0, 0.0, -0.016], rgba: [0.08, 0.08, 0.08, 1.0]}
+      - {cylinder: {radius: 0.019, length: 0.0148}, xyz: [0.0, 0.0, 0.0014], rgba: [0.35, 0.35, 0.38, 1.0]}
+    source: LD19 datasheet outline (54 x 46.3 x 34.8 mm); head size estimated
+  lidar_back: *ld19
   turret_minor_firing_system:
     # The URDF's 272 x 60 x 60 mm block swallows the turret camera's mount
     # (2.5 mm outside its side, inside its height, 54 mm of it in front of
@@ -157,6 +172,7 @@ omni_wheels:
   roller_length: 0.028         # cylinder rollers only
   roller_mass: 0.012
   roller_friction_damping: 0.0001
+  roller_rgba: [0.08, 0.08, 0.08, 1.0]  # Achilles draws the rollers, the wheel as its hub inside them
   estimated: true              # roller sizes estimated from the omni_wheel mesh
 
 # Flywheels and the agitator: the firmware closes speed and position loops on

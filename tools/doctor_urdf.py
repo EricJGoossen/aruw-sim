@@ -24,6 +24,7 @@ Anything it can't express is printed as a sim gap, never dropped silently.
 from __future__ import annotations
 
 import argparse
+import copy
 import math
 import os
 import sys
@@ -281,19 +282,6 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
         for i, layer in enumerate(o["octagon_layers"]):
             for k, (size, xyz, rpy) in enumerate(octagon_boxes(layer)):
                 box_geom(link, "collision", size, xyz=xyz, rpy=rpy, name=f"{name}_fit{i}_{k}")
-    for name, o in (spec.get("visual_overrides", {}) if variant == "achilles" else {}).items():
-        link = need_link(name, f"visual override {name}")
-        for v in link.findall("visual"):
-            link.remove(v)
-        v = sub(link, "visual", name=f"{name}_vis")
-        sub(v, "origin", xyz=fmt(o["xyz"]), rpy=fmt(o["rpy"]))
-        geom = sub(v, "geometry")
-        if "cylinder" in o:
-            sub(geom, "cylinder", radius=o["cylinder"]["radius"], length=o["cylinder"]["length"])
-        else:
-            sub(geom, "box", size=fmt(o["box"]))
-        sub(sub(v, "material", name=f"{name}_override"), "color", rgba=fmt(o["rgba"]))
-
     # MuJoCo's importer options.
     for old in robot.findall("mujoco"):
         robot.remove(old)
@@ -337,6 +325,10 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
             axle = norm([float(v) for v in joint.find("axis").get("xyz").split()])
             for c in link.findall("collision"):
                 link.remove(c)
+            if variant == "achilles" and ow.get("roller_rgba"):
+                # Drawn as its hub, inside the rollers drawn below.
+                for cyl in link.iter("cylinder"):
+                    cyl.set("radius", f"{ow['wheel_radius'] - 2 * r_roll:.9g}")
             basis = frame_with_z(axle)
             u = [basis[0][0], basis[1][0], basis[2][0]]
             v = [basis[0][1], basis[1][1], basis[2][1]]
@@ -363,6 +355,11 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
                             ixx=f"{ir:.9g}", iyy=f"{ir:.9g}", izz=f"{ia:.9g}")
                     else:
                         sub(sub(col, "geometry"), "cylinder", radius=f"{r_roll:.9g}", length=f"{length:.9g}")
+                    if variant == "achilles" and ow.get("roller_rgba"):
+                        vis = sub(rl, "visual", name=f"{rname}_vis")
+                        vis.append(copy.deepcopy(col.find("origin")))
+                        vis.append(copy.deepcopy(col.find("geometry")))
+                        sub(sub(vis, "material", name=f"{rname}_mat"), "color", rgba=fmt(ow["roller_rgba"]))
                     rj = sub(robot, "joint", name=f"{rname}_spin", type="continuous")
                     sub(rj, "parent", link=wheel)
                     sub(rj, "child", link=rname)
@@ -400,6 +397,35 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
                          xyz=[0, sign * bar["offset"], 0], rgba=team, name=f"{name}_bar_{side}")
             fixed_joint(robot, f"{name}_mount", plate["parent"], name, plate["xyz"], plate["rpy"])
         gap(f"{variant}: armor light bars are colored, not emissive (URDF has no emission)")
+
+    # Visual overrides (Achilles draws visuals; MuJoCo draws the collision
+    # shapes, and a URDF visual there would be one more colliding geom).
+    # Last, so they can name the links added above (sensor frames).
+    if variant == "achilles":
+        links.update((l.get("name"), l) for l in robot.findall("link"))
+        for name, o in spec.get("visual_overrides", {}).items():
+            link = need_link(name, f"visual override {name}")
+            for v in link.findall("visual"):
+                link.remove(v)
+            if o.get("from_collision"):
+                # The link's collision shapes, drawn: what the engines collide
+                # with and the lidars see is what the cameras see.
+                for i, c in enumerate(link.findall("collision")):
+                    v = sub(link, "visual", name=f"{name}_vis{i}")
+                    v.append(copy.deepcopy(c.find("origin")))
+                    v.append(copy.deepcopy(c.find("geometry")))
+                    sub(sub(v, "material", name=f"{name}_vis{i}_mat"), "color", rgba=fmt(o["rgba"]))
+            for i, s in enumerate(o.get("shapes", [o] if "rgba" in o and not o.get("from_collision") else [])):
+                v = sub(link, "visual", name=f"{name}_shape{i}")
+                sub(v, "origin", xyz=fmt(s.get("xyz", [0, 0, 0])), rpy=fmt(s.get("rpy", [0, 0, 0])))
+                geom = sub(v, "geometry")
+                if "cylinder" in s:
+                    sub(geom, "cylinder", radius=f"{s['cylinder']['radius']:.9g}", length=f"{s['cylinder']['length']:.9g}")
+                elif "sphere" in s:
+                    sub(geom, "sphere", radius=f"{s['sphere']['radius']:.9g}")
+                else:
+                    sub(geom, "box", size=fmt(s["box"]))
+                sub(sub(v, "material", name=f"{name}_shape{i}_mat"), "color", rgba=fmt(s["rgba"]))
 
     ET.indent(tree, space="  ")
     os.makedirs(out_dir, exist_ok=True)
