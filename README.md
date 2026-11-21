@@ -19,49 +19,119 @@ and `smoke.sh` fails on it until real detection runs here.
 Nothing the sim doesn't model is silent: every stub, unserved message or
 approximation prints `[hwemu GAP] …` once and lands in the run's gap report.
 
-## Quick start
+## Getting started
+
+### What you need
+
+- **Linux, or Windows with WSL2** (Ubuntu 22.04 or 24.04). On Windows, run
+  everything inside your WSL2 Ubuntu, and clone into its own filesystem
+  (`~/...`), not `/mnt/c`: builds there are many times slower.
+- **Docker**, usable without `sudo`: Docker Engine on Linux (then
+  `sudo usermod -aG docker $USER` and log in again), or Docker Desktop with
+  WSL integration turned on for your distro. `docker run hello-world` should
+  work.
+- **git** and **Python 3 with PyYAML**: `sudo apt install git python3-yaml`.
+- **Access to the repos.** aruw-sim and hw-emulator are private on GitHub: ask
+  for read access, and have git able to sign in (a
+  [personal access token](https://github.com/settings/tokens) as the password
+  over HTTPS, or `gh auth login`). Achilles, aruw-mcb and project-otto are
+  readable as they are.
+- **About 15 GB of disk** (the build, plus two Docker images of ~1.6 GB) and
+  **8 GB of RAM** or more. A few CPU cores help: the first build compiles a
+  physics engine, the firmware and the hub.
+
+Everything else (compilers, CMake, Python 3.10, ROS 2) comes inside Docker
+images the scripts build themselves; nothing else is installed on your machine.
+
+### Set up
 
 ```sh
-git clone https://github.com/EricJGoossen/aruw-sim && cd aruw-sim
+git clone https://github.com/EricJGoossen/aruw-sim.git
+cd aruw-sim
 git submodule update --init --recursive
-scripts/setup.sh                     # or --otto all: see "Otto's targets" below
-scripts/run.sh                       # hub + MCB + otto on Achilles; Ctrl-C stops all
-scripts/run.sh --backend mujoco --window --enemy patrol
+scripts/setup.sh --otto all
 ```
 
-The host needs git, Docker, and Python 3 with PyYAML (`apt install
-python3-yaml`), plus access to ARUW's GitLab for aruw-mcb and project-otto.
-`setup.sh` checks those, then builds everything in the dev container
-([.devcontainer/Dockerfile](.devcontainer/Dockerfile): Ubuntu 24.04 with
-cmake, ninja, g++-11, gtest/gmock, EGL/GL/GLFW, gdb, rr, uv). The first run
-takes a while; re-running it only redoes what changed. The scripts re-run
-themselves in that container ([scripts/dev.sh](scripts/dev.sh)) when the host
-lacks the toolchain; it mounts the checkout at its own path and shares the
-host's network, IPC and display (X11/WSLg), so windows open and paths match
-inside and out.
+`setup.sh` checks the list above, builds the dev image
+([.devcontainer/Dockerfile](.devcontainer/Dockerfile)), then the hub, both
+physics engines, the firmware and otto's Python environments, all inside it.
+The first run takes 10 to 30 minutes, depending on your machine; it's safe to
+re-run, and redoes only what changed. It ends by listing the commands to run.
+Without `--otto all` it sets up only otto's comp branch (see
+[Otto's branches](#ottos-branches)).
 
-### Otto's targets
+### Run
 
-The sim runs one of three otto branches, each with its patch in
-`patches/project-otto/` (the firmware has one, `patches/aruw-mcb.patch`):
+```sh
+scripts/run.sh
+```
 
-| `--otto` | branch | where |
+starts the simulated sentry: the hub (the simulated robot), the MCB firmware
+and otto, each a separate process, with their output on your console prefixed
+`[hub]`, `[mcb]` and `[otto]`. The referee holds the match for its first 25 s
+(preparation, self-check, countdown), so the sentry stands still, then drives.
+**Ctrl-C** stops everything and prints the run's gap report: what the sim
+doesn't model. Each process's log is in `build/run/achilles/logs/`.
+
+Some others:
+
+```sh
+scripts/run.sh --window --enemy patrol      # the turret camera's view, and an enemy sentry to chase
+scripts/run.sh --backend mujoco             # MuJoCo instead of Achilles
+scripts/run.sh --seconds 60                 # stop on its own after 60 s of sim time
+scripts/run.sh --otto main                  # otto main instead of the comp branch
+scripts/run.sh --autonav-drive              # the 2026-27 ROS 2 autonav stack (below)
+scripts/run.sh --help                       # everything
+```
+
+`--window` opens windows through your display (WSLg on Windows 11 works as
+is). `run.sh` rebuilds whatever changed before it starts; `--no-build` skips
+that.
+
+### If something goes wrong
+
+- **`git submodule update` asks for a password, or says "repository not
+  found":** you don't have access to that repo yet, or git can't sign in to
+  GitHub (see the access item above).
+- **`setup.sh` says Docker isn't running or permission denied:** start Docker
+  Desktop, or add yourself to the `docker` group and log in again.
+- **"neither has the sim's hooks nor takes ...patch":** the branch moved and
+  its hooks changed; see [Otto's branches](#ottos-branches).
+- **"the run dir's path is too long for the hub's sockets":** clone somewhere
+  with a shorter path (`~/aruw-sim`), or set `ARUW_SIM_RUNTIME_DIR` to a short
+  directory.
+- **The build runs out of memory:** `scripts/setup.sh -j 1`.
+
+### Otto's branches
+
+The robot code runs from branches that carry the sim's hooks: a few lines in
+each, all under `HWEMU`, that do nothing on the robot (they act only when the
+sim's environment variables are set).
+
+| | branch | in |
 |---|---|---|
-| `comp` (default) | `feat/comp-branch-sim-integration` | the `project-otto` submodule, at its pinned commit |
-| `main` | `main` | a worktree in `build/otto-main` |
-| `autonav` | `feature/autonav_framework` (the 2026-27 ROS 2 stack) | a worktree in `build/otto-autonav`, plus its ROS image and packages |
+| firmware | aruw-mcb `EricG/sim-integration` | the `aruw-mcb` submodule |
+| otto `--otto comp` (default) | project-otto `feat/comp-branch-sim-integration` (the 2026 comp branch) | the `project-otto` submodule |
+| otto `--otto main` | project-otto `main`, with `patches/project-otto/main.patch` | a worktree in `build/otto-main` |
+| otto `--otto autonav` | project-otto `feature/autonav_framework` (the 2026-27 ROS 2 stack) | a worktree in `build/otto-autonav`, plus its ROS image and packages |
 
-`scripts/setup.sh --otto comp,main,autonav` (or `all`) sets them up;
-`scripts/otto_setup.sh TARGET [REF]` sets up one, or moves it to another
-commit. Then `scripts/run.sh --otto main`, or `--autonav` (see below).
-A patch that no longer applies to its branch stops setup with the file that
-failed: re-export it from a working tree (`git diff` there, plus new files).
+`patches/` holds the same hooks as patches (`aruw-mcb.patch`,
+`project-otto/{comp,main,autonav}.patch`), for running a commit that lacks
+them: the scripts apply one only where its hooks aren't already there.
+`scripts/otto_setup.sh TARGET [REF]` sets up one of otto's targets again, at
+its branch's newest commit or at REF; `scripts/setup.sh --otto TARGET` does the
+same as part of the whole setup.
+
+How it works, under the hood: the scripts re-run themselves in the dev
+container ([scripts/dev.sh](scripts/dev.sh)) when your machine lacks the
+toolchain. It mounts the checkout at its own path and shares the host's
+network, IPC and display, so windows open and paths match inside and out.
 
 ## Scripts
 
 | | |
 |---|---|
-| [`build.sh`](scripts/build.sh) `[--profile debug\|release] [--only STEP,…] [-j N]` | applies `patches/` idempotently, doctors the URDF and builds the Achilles model, runs `check_model.py`, builds the hub + Achilles + MuJoCo + `libaruw_devices` (CMake/Ninja/ccache), the firmware (`scons build-sim robot=SENTRY_ACHLYS`) and otto's venv (`uv sync --frozen`). Incremental; `-j 2` by default, capped by memory |
+| [`build.sh`](scripts/build.sh) `[--profile debug\|release] [--only STEP,…] [-j N]` | applies `patches/` where the submodules lack the hooks, doctors the URDF and builds the Achilles model, runs `check_model.py`, builds the hub + Achilles + MuJoCo + `libaruw_devices` (CMake/Ninja/ccache), the firmware (`scons build-sim robot=SENTRY_ACHLYS`) and otto's venv (`uv sync --frozen`). Incremental; `-j 2` by default, capped by memory |
 | [`setup.sh`](scripts/setup.sh) `[--otto TARGET,…\|all] [-j N]` | everything a fresh clone needs: checks the host, checks out the submodules, runs `build.sh`, and `otto_setup.sh` for each of otto's other targets |
 | [`run.sh`](scripts/run.sh) `[--backend achilles\|mujoco] [--window] [--lockstep] [--debug mcb\|otto\|hub] [--rr] [--seconds N] [--compare] [--no-build] [--enemy BEHAVIOR] [--otto comp\|main\|autonav] [--autonav\|--autonav-drive]` | builds, then starts the hub, the MCB and otto; per-process logs in `build/run/<backend>/logs/`, prefixed output on the console; if one dies the rest stop; prints the gap report at the end. `--enemy patrol` adds a blue sentry the hub drives by `assets/enemy/behaviors/patrol.yaml` (default: none). `--autonav` runs the 2026-27 ROS 2 autonav stack instead of the comp branch's (see below) |
 | [`otto_setup.sh`](scripts/otto_setup.sh) `comp\|main\|autonav [REF]` | one of otto's targets: a worktree of project-otto at the branch (or REF) in `build/otto-TARGET` with its patch, its venv, and for autonav the `aruw-autonav:humble` image (`docker/autonav`) and its ROS packages in `build/autonav-ws`. comp is the submodule, which `build.sh` handles |
@@ -89,9 +159,9 @@ gdb comes from the container when the host has none ([scripts/gdb.sh](scripts/gd
 ## Layout
 
 ```
-achilles/ hw-emulator/ aruw-mcb/ project-otto/   submodules (mcb and otto at upstream GitLab, unpatched)
-patches/        aruw-mcb.patch, project-otto/{comp,main,autonav}.patch: only the robot code's side of the emulator
-                interface, all under HWEMU; build.sh applies them
+achilles/ hw-emulator/ aruw-mcb/ project-otto/   submodules (mcb and otto on their sim-integration branches)
+patches/        aruw-mcb.patch, project-otto/{comp,main,autonav}.patch: the robot code's side of the emulator
+                interface, all under HWEMU, for commits that don't carry it already
 aruw_devices/   libaruw_devices.so, the hub plugin: RMUL referee, cap bank, voltage/current sensor
 assets/sentry/  sentry_description/ (the CAD export), urdf_doctor.yaml, devices.yaml, sim.yaml,
                 otto_sim.yaml, known_gaps.yaml
@@ -151,8 +221,8 @@ the MCB's wheel EKF fuses. `scripts/setup.sh --otto autonav` once, then
 - The map is this field's (`tools/field_map.py`), not the branch's ARCC 2027
   one: a different field from the sim's 2026 one.
 - The branch has no ROS 2 planner yet, so the robot gets no paths.
-  `--autonav-drive` also runs the legacy planner (a sim-only switch in
-  `patches/project-otto/autonav.patch`) to watch the localization while it
+  `--autonav-drive` also runs the legacy planner (a sim-only switch in the
+  branch's `main.py`, `HWEMU_AUTONAV_LEGACY`) to watch the localization while it
   drives. `scripts/autonav_check.py` reports the localization's error against
   truth from `<run dir>/autonav/localization.jsonl`, and the Odin's own.
 

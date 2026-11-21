@@ -4,10 +4,12 @@
 #   scripts/build.sh [--profile debug|release] [--only STEP[,STEP...]] [-j N]
 #
 # Steps, in order (--only picks some):
-#   patches  apply patches/aruw-mcb.patch and patches/project-otto/comp.patch
-#            to their submodules, idempotently; refuses loudly if one no
-#            longer applies (and isn't already applied). Otto's other targets
-#            (main, autonav) are worktrees: scripts/otto_setup.sh
+#   patches  the submodules' branches (aruw-mcb EricG/sim-integration, otto
+#            feat/comp-branch-sim-integration) carry the sim's hooks; on a
+#            commit that doesn't, apply patches/aruw-mcb.patch and
+#            patches/project-otto/comp.patch. Refuses loudly if one is neither
+#            there nor applies. Otto's other targets (main, autonav) are
+#            worktrees: scripts/otto_setup.sh
 #   model    tools/doctor_urdf.py, then the Achilles model (Achilles's
 #            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py)
 #            and the enemy robot (tools/enemy_model.py, assets/enemy), when
@@ -85,7 +87,7 @@ apply_patch() {
   local sub="$1" patch="$repo/patches/$2"
   [ -f "$patch" ] || return 0
   if git -C "$sub" apply --reverse --check "$patch" 2>/dev/null; then
-    echo "  $sub: $(basename "$patch") already applied"
+    echo "  $sub: has the sim's hooks ($(basename "$patch"))"
   elif git -C "$sub" apply --check "$patch" 2>/dev/null; then
     git -C "$sub" apply "$patch"
     echo "  $sub: applied $(basename "$patch")"
