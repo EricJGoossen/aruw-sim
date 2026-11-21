@@ -20,8 +20,9 @@
 #            uv.lock or pyproject.toml changed
 #
 # check_model.py stops the build on a mismatch. The three known ones (see
-# docs/PLAN.md) are let through for test runs with
-#   HWEMU_ACCEPT_MISMATCH=wheelbase_radius.joint_fl_wheel,...
+# docs/PLAN.md, scripts/known_mismatches.sh) are let through by default, and
+# still printed; HWEMU_ACCEPT_MISMATCH overrides the list (set it empty to
+# let none through).
 #
 # The job count defaults to 2 (Achilles's tests and the hub link take
 # several GB per job); -j or ARUW_SIM_JOBS overrides it, and it's capped at
@@ -156,6 +157,10 @@ PY
     stamp_set enemy "$h"
   else
     echo "  enemy model up to date"
+  fi
+  if [ -z "${HWEMU_ACCEPT_MISMATCH+set}" ]; then
+    source "$repo/scripts/known_mismatches.sh"
+    echo "  letting the known model mismatches through (scripts/known_mismatches.sh)"
   fi
   python3 tools/check_model.py
 fi
