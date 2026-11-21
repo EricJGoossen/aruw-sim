@@ -245,7 +245,11 @@ devices:
   - name: referee
     type: aruw_referee
     transport: {port: referee}
-    params: {robot_id: 107, game_type: 3, game_stage: 4}
+    # The red sentry (7): it spawns in red's Resupply Zone, in the field's
+    # (red's) frame. The match starts at 25 s: preparation, the 15 s
+    # self-check and the 5 s countdown first, so it boots and calibrates its
+    # IMUs standing still, as on the real field.
+    params: {robot_id: 7, game_type: 3, game_stage: 4, match_start: 25}
 
   # ---- the Jetson's links: vision UART, lidars, cameras ----------------------
   - name: vision

@@ -72,6 +72,11 @@ class Referee final : public IDevice {
     heat_limit_ = static_cast<std::uint16_t>(params.Integer("heat_limit", 400));
     cooling_rate_ = static_cast<std::uint16_t>(params.Integer("cooling_rate", 80));
     stage_ = static_cast<std::uint8_t>(params.Integer("game_stage", 4));  // 4: in match
+    // With match_start (sim s), the stages a real match runs through first:
+    // preparation (1) until 20 s before, self-check (2) for 15 s, countdown
+    // (3) for 5 s, then in match (4) -- so the robot boots, and calibrates
+    // its IMUs, standing still. Without it, game_stage from the start.
+    match_start_ = params.Number("match_start", -1.0);
     game_type_ = static_cast<std::uint8_t>(params.Integer("game_type", 3));  // 3: RMUL
     match_seconds_ = params.Number("match_seconds", 420);
     status_.SetRate(params.Number("status_rate_hz", 10));
@@ -99,8 +104,10 @@ class Referee final : public IDevice {
     }
     if (status_.Due(now)) {
       std::vector<std::uint8_t> g(11, 0);
-      g[0] = static_cast<std::uint8_t>((game_type_ & 0xF) | ((stage_ & 0xF) << 4));
-      const double left = std::max(0.0, match_seconds_ - now.seconds);
+      const std::uint8_t stage = StageAt(now.seconds);
+      g[0] = static_cast<std::uint8_t>((game_type_ & 0xF) | ((stage & 0xF) << 4));
+      const double elapsed = match_start_ >= 0.0 ? std::max(0.0, now.seconds - match_start_) : now.seconds;
+      const double left = std::max(0.0, match_seconds_ - elapsed);
       PutU16(&g, 1, static_cast<std::uint16_t>(left));
       Send(kGameStatus, g);
 
@@ -134,6 +141,12 @@ class Referee final : public IDevice {
   }
 
  private:
+  std::uint8_t StageAt(double t) const {
+    if (match_start_ < 0.0 || t >= match_start_) return stage_;
+    if (t >= match_start_ - 5.0) return 3;
+    if (t >= match_start_ - 20.0) return 2;
+    return 1;
+  }
   static std::string Hex(std::uint16_t v) {
     char b[8];
     std::snprintf(b, sizeof(b), "%04X", v);
@@ -150,6 +163,7 @@ class Referee final : public IDevice {
   hwemu::protocol::DjiFrameParser parser_;
   std::uint8_t robot_id_ = 107, stage_ = 4, game_type_ = 3, seq_ = 0;
   std::uint16_t max_hp_ = 400, power_limit_ = 100, heat_limit_ = 400, cooling_rate_ = 80;
+  double match_start_ = -1.0;
   double match_seconds_ = 420;
   Every status_, power_;
   std::uint64_t sent_ = 0, received_ = 0;
