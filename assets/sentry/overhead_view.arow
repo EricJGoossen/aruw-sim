@@ -1,6 +1,7 @@
 # An overhead view of the field, for run.sh --window on Achilles: a camera
-# fixed to the world, 12 m above the field's centre (6, 4), looking straight
-# down. The image has the field's length (x) left to right and the High
+# on its own mount (overhead_mount.arow), which starts 12 m above the
+# field's centre (6, 4), looking straight down. Its window flies it: W/A/S/D
+# to move, E/Q up and down, Shift for faster, drag to turn, scroll to dolly. The image has the field's length (x) left to right and the High
 # Ground (y = 8) at the top, as in the rules' Figure 3-3. 780 x 540 at
 # fx = fy = 720 px frames the 13 m x 9 m base plate.
 #
@@ -8,11 +9,12 @@
 # rotation (w, x, y, z) turns those onto -z, -x and +y of the world.
 #
 # Nothing reads it but the window: no device binds it. 15 Hz of sim time.
+# The mount carries the position; this pose only turns the camera down.
 sensor: overhead_view
 kind: camera
-attach: {archetype: sentry, joint: world}
+attach: {archetype: overhead_mount, joint: camera_mount}
 config:
-  mount: {translation: [6.0, 4.0, 12.0], rotation: [0.5, -0.5, 0.5, 0.5]}
+  mount: {translation: [0, 0, 0], rotation: [0.5, -0.5, 0.5, 0.5]}
   period: 0.0666667
   width: 780
   height: 540

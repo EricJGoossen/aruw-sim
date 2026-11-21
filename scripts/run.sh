@@ -10,7 +10,8 @@
 #   --window      open the sensor windows sim.yaml lists under `windows:` (the
 #                 sentry's: the RealSense's image), via DISPLAY (WSLg works);
 #                 on Achilles also an overhead view of the field, a camera
-#                 12 m up (assets/sentry/overhead_view.arow).
+#                 12 m up (assets/sentry/overhead_view.arow) that its window
+#                 flies: W/A/S/D, E/Q up/down, drag to turn, scroll to dolly.
 #                 They draw on the hub's thread, so they cost sim speed: drawn
 #                 at 30 Hz with 8 llvmpipe threads, about 10% of the rate
 #   --window-hz N how often the windows draw (default 30; fewer: faster sim)
@@ -147,11 +148,12 @@ text = open(arow).read()
 if no_arducam == "1":
     text = text.replace("  - parts/arducam_image.arow\n", "").replace("- parts/arducam_image.arow\n", "")
 if overhead == "1":
+    shutil.copy(f"{assets}/overhead_mount.arow", f"{model}/overhead_mount.arow")
     shutil.copy(f"{assets}/overhead_view.arow", f"{model}/parts/overhead_view.arow")
     head, sep, rest = text.partition("includes:\n")
     indent = rest[:len(rest) - len(rest.lstrip(" "))]
-    text = head + sep + f"{indent}- parts/overhead_view.arow\n" + rest
-    sim["windows"] = [{"sensor": "overhead_view", "view": "image", "title": "Field (overhead)"}] + \
+    text = head + sep + f"{indent}- overhead_mount.arow\n{indent}- parts/overhead_view.arow\n" + rest
+    sim["windows"] = [{"sensor": "overhead_view", "view": "image", "title": "Field (overhead)", "fly": True}] + \
         list(sim.get("windows") or [])
 open(arow, "w").write(text)
 sim["models"]["arow"] = arow

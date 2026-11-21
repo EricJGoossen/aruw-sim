@@ -224,13 +224,28 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
             raise SystemExit(f"doctor_urdf: {src} uses package:// meshes; use the standalone URDF")
         mesh.set("filename", os.path.abspath(os.path.join(os.path.dirname(src), fn)))
 
-    # The vendored visuals are 80 MB of CAD meshes: the sim renders the
-    # collision shapes instead, plus the armor visuals added below.
+    # The coarse URDF's visuals are 80 MB of CAD meshes: dropped, so MuJoCo
+    # draws the collision shapes instead. The primitives URDF's are boxes
+    # and cylinders, and Achilles draws only visuals, so they stay, each
+    # named material's colour written into the visual itself (the
+    # converter reads only an inline colour). The armor visuals are added
+    # below.
+    colors = {}
+    for m in robot.findall("material"):
+        c = m.find("color")
+        if m.get("name") and c is not None:
+            colors[m.get("name")] = c.get("rgba")
     dropped = 0
     for link in links.values():
         for v in link.findall("visual"):
-            link.remove(v)
-            dropped += 1
+            g = v.find("geometry")
+            if g is None or len(g) == 0 or g[0].tag == "mesh":
+                link.remove(v)
+                dropped += 1
+                continue
+            mat = v.find("material")
+            if mat is not None and mat.find("color") is None and mat.get("name") in colors:
+                sub(mat, "color", rgba=colors[mat.get("name")])
     if dropped:
         gap(f"{variant}: the vendored CAD visual meshes are not rendered; cameras see collision shapes")
 
