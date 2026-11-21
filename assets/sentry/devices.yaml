@@ -261,6 +261,11 @@ devices:
   - name: lidar_front
     type: ld19_lidar
     transport: {port: "ld19-1-4.1:1.0"}
+    # It sees out of 196 degrees, -26 to 170 counterclockwise from its +x: the
+    # rest is the robot ("Sentry sensor coverage", from the Odin1
+    # characterization; LD19 at -0.270, +0.030 m and +89 deg from the Odin by
+    # hand-eye calibration). The back LD19's sector wasn't measured.
+    params: {usable: [-26, 170]}
     bind:
       lidar: lidar_front_scan
       mujoco:

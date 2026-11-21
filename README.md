@@ -123,15 +123,22 @@ the MCB's wheel EKF fuses. `scripts/autonav_setup.sh` once, then
 - The hub and the MCB run on the host (not the dev container), so that otto
   and the ROS nodes, each in an `aruw-autonav:humble` container on the host's
   network, IPC and PTYs, can reach them.
-- The Odin is a 360-degree lidar ring at its CAD mount on the turret major
-  (the model's `odin` frame), which is the band the localization node cuts
-  its scan from; `tools/autonav/hwemu_odin.py` stands in for its driver
-  (cloud, odometry as truth, `/clock`). Both are reported as gaps.
+- The Odin is as `assets/sentry/odin.yaml` has it, from its characterization
+  against motion capture (Oct 2026). Its cloud is fans of beams across its
+  126-degree field of view at its CAD mount on the turret major (the model's
+  `odin` frame), tilted to sample the 0.10-0.40 m band the maps are drawn
+  for. Its pose is truth plus its measured error: a registration offset per
+  relocalization, correlated heavy-tailed noise, no pose until its first fix
+  ~10 s after start, and a 14% chance of a wrong first fix
+  (`HWEMU_ODIN_SEED`, default 1, seeds it; `HWEMU_ODIN_WRONG_FIX=1` or `0`
+  forces or rules out the wrong fix). `tools/autonav/hwemu_odin.py` stands
+  in for its driver (cloud, pose, `/clock`) and logs its fixes and output to
+  `<run dir>/autonav/odin_events.jsonl` and `odin_pose.jsonl`.
 - The map is this field's (`tools/field_map.py`), not the branch's ARCC 2027
   one: a different field from the sim's 2026 one.
 - The branch has no ROS 2 planner yet, so the robot gets no paths.
   `--autonav-drive` also runs the legacy planner (a sim-only switch in
   `patches/project-otto-autonav.patch`) to watch the localization while it
   drives. `scripts/autonav_check.py` reports the localization's error against
-  truth from `<run dir>/autonav/localization.jsonl`.
+  truth from `<run dir>/autonav/localization.jsonl`, and the Odin's own.
 
