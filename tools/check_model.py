@@ -114,9 +114,12 @@ def main() -> int:
     c = Checker(accepted)
     yml = "assets/sentry/urdf_doctor.yaml"
 
-    def frame_check(frame: str, values, where: str, scale: float = 1.0) -> None:
+    def frame_check(frame: str, values, where: str, scale: float = 1.0, planar: bool = False) -> None:
+        # planar: the source gives a 2-D mount (otto's lidars), so the height
+        # is the model's own and only x and y are compared.
         f = frames[frame]
-        c.same(f"{frame}.xyz", f["xyz"], [v * scale for v in values[:3]], TOL_M, f"{yml} frames.{frame}", where)
+        n = 2 if planar else 3
+        c.same(f"{frame}.xyz", f["xyz"][:n], [v * scale for v in values[:n]], TOL_M, f"{yml} frames.{frame}", where)
         c.same(f"{frame}.rpy", f["rpy"], values[3:6], TOL_RAD, f"{yml} frames.{frame}", where)
 
     # IMU mounts (MCB).
@@ -141,7 +144,7 @@ def main() -> int:
     for i, frame in enumerate(["lidar_front", "lidar_back"]):
         lidar = otto["autonav"]["lidars"][i]
         frame_check(frame, lidar["lidar_position_to_chassis_frame"] + lidar["lidar_orientation_to_chassis_frame"],
-                    f"project-otto sentry_name_config.yaml autonav.lidars[{i}]")
+                    f"project-otto sentry_name_config.yaml autonav.lidars[{i}]", planar=True)
 
     # Wheels: the URDF's geometry against the MCB's kinematics.
     radius = cpp_number(constant(chassis_h, "WHEEL_RADIUS").replace("FUDGE_FACTOR",

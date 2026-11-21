@@ -262,17 +262,14 @@ devices:
     bind:
       lidar: lidar_front_scan
       mujoco:
-        # ignore_robot: the LD19s sit inside the modelled chassis (otto's
-        # mounts, 135 mm fore and aft); the real ones look out through gaps
-        # the collision shapes don't have, so they don't see the sentry.
-        lidar_front_scan: {type: lidar, body: lidar_front, samples: 456, min_range: 0.02, max_range: 12, period: 0.1, ignore_robot: true}
+        lidar_front_scan: {type: lidar, body: lidar_front, samples: 456, min_range: 0.02, max_range: 12, period: 0.1}
   - name: lidar_back
     type: ld19_lidar
     transport: {port: "ld19-1-4.4:1.0"}
     bind:
       lidar: lidar_back_scan
       mujoco:
-        lidar_back_scan: {type: lidar, body: lidar_back, samples: 456, min_range: 0.02, max_range: 12, period: 0.1, ignore_robot: true}
+        lidar_back_scan: {type: lidar, body: lidar_back, samples: 456, min_range: 0.02, max_range: 12, period: 0.1}
   - name: d435
     type: realsense_d435
     transport: {shm: hwemu_d435}

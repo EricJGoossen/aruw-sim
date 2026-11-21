@@ -274,7 +274,7 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
                 sub(mat, "color", rgba=colors[mat.get("name")])
     if dropped:
         gap(f"{variant}: the vendored CAD visual meshes are not rendered; cameras see collision shapes")
-    for name, o in (spec.get("collision_overrides", {}) if variant == "achilles" else {}).items():
+    for name, o in spec.get("collision_overrides", {}).items():
         link = need_link(name, f"collision override {name}")
         for c in link.findall("collision"):
             link.remove(c)

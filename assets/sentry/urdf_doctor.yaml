@@ -91,14 +91,17 @@ frames:
     source: otto sentry_name_config.yaml arducam_cameras[0].base_reference_to_camera_transform
     note: otto's "base reference" is taken to be the chassis (base_link) -- check
   # The two LD19 lidars (otto autonav).
+  # The LD19s' scan plane is 46 mm up in base_link (109 mm off the ground):
+  # the open band in the chassis CAD above each LD19's base, where its head
+  # looks out (meshes/visual/chassis.stl); x and y are otto's.
   lidar_front:
     parent: base_link
-    xyz: [0.135, 0.0, 0.0]
+    xyz: [0.135, 0.0, 0.046]
     rpy: [0.0, 0.0, -1.5707]
     source: otto sentry_name_config.yaml autonav.lidars[0] (port 1-4.1:1.0)
   lidar_back:
     parent: base_link
-    xyz: [-0.135, 0.0, 0.0]
+    xyz: [-0.135, 0.0, 0.046]
     rpy: [0.0, 0.0, 1.5707]
     source: otto sentry_name_config.yaml autonav.lidars[1] (port 1-4.4:1.0)
 
@@ -117,9 +120,10 @@ visual_overrides:
     rgba: [0.75, 0.75, 0.75, 1.0]
     source: approximation (the launcher's CAD isn't in the primitives URDF)
 
-# Collision shapes replacing the primitives URDF's, for Achilles (MuJoCo
-# collides with the coarse URDF's convex hulls themselves). Each replaces
-# its link's collision shapes.
+# Collision shapes replacing the vendored URDFs' -- the primitives' boxes
+# and the coarse one's convex hulls -- in both, so both engines collide with,
+# and their lidars see, the same robot. Each replaces its link's collision
+# shapes.
 collision_overrides:
   base_link:
     # Fitted to the chassis hull (meshes/collision/chassis.stl): a tapered
@@ -128,8 +132,13 @@ collision_overrides:
     # 160 mm tall, so its corners stuck out ~12 cm and it missed the top
     # 70 mm. Two octagonal layers, from the hull's sections at z = 0.05 and
     # 0.15 (base_link frame): half-widths in x and y, and |x| + |y| <= chamfer.
+    # The lidars' scan plane (z = 0.046) runs through an open band, 30 to
+    # 62 mm: on the robot the LD19s look out between the chassis plates, so
+    # in that band only what really reaches the plane -- the wheels'
+    # rollers, the armor -- blocks them.
     octagon_layers:
-      - {z: [-0.025, 0.09], half: [0.28, 0.282], chamfer: 0.40}
+      - {z: [-0.025, 0.030], half: [0.28, 0.282], chamfer: 0.40}
+      - {z: [0.062, 0.09], half: [0.28, 0.282], chamfer: 0.40}
       - {z: [0.09, 0.196], half: [0.248, 0.256], chamfer: 0.35}
     source: fitted to chassis.stl (z -0.034 to 0.196; the underside's 25 mm chamfer below z = -0.01 is left square)
 
