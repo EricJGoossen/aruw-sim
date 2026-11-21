@@ -4,10 +4,10 @@
 #   scripts/build.sh [--profile debug|release] [--only STEP[,STEP...]] [-j N]
 #
 # Steps, in order (--only picks some):
-#   patches  apply patches/aruw-mcb.patch, patches/aruw-mcb-fixes.patch (firmware
-#            bugs the sim found; ARUW_SIM_NO_FIXES=1 skips it) and
-#            patches/project-otto.patch to their submodules, idempotently;
-#            refuses loudly if one no longer applies (and isn't already applied)
+#   patches  apply patches/aruw-mcb.patch and patches/project-otto/comp.patch
+#            to their submodules, idempotently; refuses loudly if one no
+#            longer applies (and isn't already applied). Otto's other targets
+#            (main, autonav) are worktrees: scripts/otto_setup.sh
 #   model    tools/doctor_urdf.py, then the Achilles model (Achilles's
 #            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py)
 #            and the enemy robot (tools/enemy_model.py, assets/enemy), when
@@ -81,7 +81,7 @@ stamp_set() { echo "$2" >"$B/stamps/$1"; }
 
 # --- patches -----------------------------------------------------------------
 apply_patch() {
-  local sub="$1" patch="$repo/patches/${2:-$1}.patch"
+  local sub="$1" patch="$repo/patches/$2"
   [ -f "$patch" ] || return 0
   if git -C "$sub" apply --reverse --check "$patch" 2>/dev/null; then
     echo "  $sub: $(basename "$patch") already applied"
@@ -97,11 +97,9 @@ apply_patch() {
 }
 if want patches; then
   step "patches"
-  apply_patch aruw-mcb
-  # Firmware bug fixes the sim found -- not emulator interface, so kept apart
-  # for upstreaming (docs/PLAN.md). ARUW_SIM_NO_FIXES=1 leaves them out.
-  [ "${ARUW_SIM_NO_FIXES:-0}" = "1" ] || apply_patch aruw-mcb aruw-mcb-fixes
-  apply_patch project-otto
+  # The firmware's emulator hooks, and the firmware bugs the sim found.
+  apply_patch aruw-mcb aruw-mcb.patch
+  apply_patch project-otto project-otto/comp.patch
 fi
 
 # --- model -------------------------------------------------------------------
