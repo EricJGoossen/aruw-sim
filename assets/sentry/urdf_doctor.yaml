@@ -204,7 +204,7 @@ mechanisms:
 # with a light bar along each side. Placement on the sentry estimated from the
 # chassis mesh (four plates, one per side, tilted back 15 degrees).
 armor:
-  team_color: blue             # the light bars: blue or red
+  team_color: red              # the light bars: blue or red -- ours is red (referee robot_id 7); the enemy (assets/enemy) is blue
   plate: {width: 0.135, height: 0.125, thickness: 0.004, rgba: [0.15, 0.15, 0.15, 1]}
   light_bar: {width: 0.012, height: 0.055, thickness: 0.008, offset: 0.0735}
   sticker: {width: 0.06, height: 0.07, rgba: [0.9, 0.9, 0.9, 1]}

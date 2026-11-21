@@ -9,8 +9,9 @@
 #            patches/project-otto.patch to their submodules, idempotently;
 #            refuses loudly if one no longer applies (and isn't already applied)
 #   model    tools/doctor_urdf.py, then the Achilles model (Achilles's
-#            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py),
-#            when their inputs changed; then tools/check_model.py, always
+#            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py)
+#            and the enemy robot (tools/enemy_model.py, assets/enemy), when
+#            their inputs changed; then tools/check_model.py, always
 #   cmake    the hub, Achilles, MuJoCo, the Python module and libaruw_devices
 #            (CMake + Ninja + ccache, build/cmake)
 #   mcb      the hosted firmware: scons build-sim robot=SENTRY_ACHLYS
@@ -142,6 +143,21 @@ PY
     stamp_set arow "$h"
   else
     echo "  Achilles model up to date"
+  fi
+  # The enemy robot run.sh --enemy adds (assets/enemy): the doctored sentry
+  # made rigid, for both backends.
+  EOUT="$B/assets/enemy"
+  h="$(inputs_hash "$OUT/sentry_achilles.urdf" "$OUT/sentry_mujoco.urdf" assets/enemy/enemy.yaml \
+        "$ASSETS/urdf_doctor.yaml" tools/enemy_model.py achilles/tools/urdf_to_arow.py tools/lane_pack_arow.py)"
+  if ! stamp_ok enemy "$h" || [ ! -f "$EOUT/achilles/enemy.arow" ]; then
+    rm -rf "$EOUT"
+    python3 tools/enemy_model.py assets/enemy/enemy.yaml "$EOUT" >/dev/null
+    python3 achilles/tools/urdf_to_arow.py "$EOUT/enemy_achilles.urdf" "$EOUT/achilles" \
+        --archetype enemy --gaps "$EOUT/achilles/model_gaps.jsonl" >/dev/null
+    python3 tools/lane_pack_arow.py "$EOUT/achilles" --archetype enemy >/dev/null
+    stamp_set enemy "$h"
+  else
+    echo "  enemy model up to date"
   fi
   python3 tools/check_model.py
 fi

@@ -1,0 +1,14 @@
+# The enemy robot scripts/run.sh --enemy BEHAVIOR adds to a run: another
+# sentry, on the other team, that the hub moves along a scripted route
+# (behaviors/BEHAVIOR.yaml) instead of running a firmware. It's the doctored
+# sentry (build/assets/sentry/sentry_<backend>.urdf) made rigid --
+# tools/enemy_model.py welds every joint, drops the omni rollers for a plain
+# wheel, and lights its armor in its team's colour -- so it collides with our
+# robot, blocks its lidars and shows up in its cameras like the real thing,
+# without driving.
+#
+# Built by scripts/build.sh (model step) to build/assets/enemy/:
+# enemy_mujoco.urdf (MuJoCo attaches it as a mocap body) and achilles/
+# enemy.arow (archetype `enemy`, a welded root the hub places).
+source: ../../build/assets/sentry  # the doctored sentry, relative to this file
+team_color: blue                   # its armor light bars: red or blue (we're red: referee robot_id 7)

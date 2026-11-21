@@ -5,6 +5,7 @@
 #   scripts/run.sh [--backend achilles|mujoco] [--window [--window-hz N]] [--lockstep]
 #                  [--debug mcb|otto|hub] [--rr] [--seconds N] [--no-build]
 #                  [--profile debug|release] [--compare] [--no-otto] [--no-mcb]
+#                  [--enemy BEHAVIOR]
 #
 #   --backend     the physics backend (default achilles)
 #   --window      open the sensor windows sim.yaml lists under `windows:` (the
@@ -28,6 +29,12 @@
 #   --compare     run the hub in-process under scripts/compare.py, which prints
 #                 the firmware's belief (its odometry) next to sim truth
 #   --no-otto / --no-mcb   leave one out
+#   --enemy B     add an enemy robot (assets/enemy: another sentry, on the
+#                 blue team) that the hub moves by behavior B, one of
+#                 assets/enemy/behaviors/*.yaml (patrol: laps between the
+#                 Capture Point and blue's Resupply Zone). It collides, blocks
+#                 lidars and shows in cameras, but runs no firmware. Default:
+#                 no enemy.
 #   --no-arducam  leave the Arducam out of the sim (its device and its camera):
 #                 otto doesn't read it by default (arducam_aruco: False), and
 #                 rendering it, 1280x800 at 120 Hz, costs more than the rest of
@@ -53,7 +60,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
 backend=achilles window=0 lockstep=0 debug="" rr=0 seconds="" build=1 profile=debug compare=0
-want_otto=1 want_mcb=1 no_arducam=0 window_hz=""
+want_otto=1 want_mcb=1 no_arducam=0 window_hz="" enemy=""
 orig_args=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -76,12 +83,18 @@ while [ $# -gt 0 ]; do
     --no-otto) want_otto=0; shift ;;
     --no-mcb) want_mcb=0; shift ;;
     --no-arducam) no_arducam=1; shift ;;
+    --enemy) enemy="$2"; shift 2 ;;
+    --enemy=*) enemy="${1#*=}"; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) echo "run.sh: unknown argument $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 case "$backend" in achilles|mujoco) ;; *) echo "run.sh: --backend is achilles or mujoco" >&2; exit 2 ;; esac
 case "$debug" in ""|mcb|otto|hub) ;; *) echo "run.sh: --debug is mcb, otto or hub" >&2; exit 2 ;; esac
+if [ -n "$enemy" ] && [ ! -f "assets/enemy/behaviors/$enemy.yaml" ]; then
+  echo "run.sh: no enemy behavior '$enemy'; there's $(cd assets/enemy/behaviors && ls *.yaml | sed 's/\.yaml$//' | paste -sd, -)" >&2
+  exit 2
+fi
 [ -n "$debug" ] && lockstep=1
 
 if [ -z "${ARUW_SIM_CONTAINER:-}" ] && [ "${ARUW_SIM_NATIVE:-0}" != "1" ] \
@@ -124,13 +137,14 @@ if [ "$lockstep" = 1 ]; then lock_env=(HWEMU_LOCKSTEP=1); fi
 sim_yaml=assets/sentry/sim.yaml devices_yaml=assets/sentry/devices.yaml
 overhead=0
 [ "$window" = 1 ] && [ "$backend" = achilles ] && overhead=1
-if [ "$no_arducam" = 1 ] || [ "$overhead" = 1 ]; then
+if [ "$no_arducam" = 1 ] || [ "$overhead" = 1 ] || [ -n "$enemy" ]; then
   # This run's sim.yaml and devices.yaml, and a copy of the Achilles model:
-  # without the Arducam's device and camera (--no-arducam), and with the
-  # overhead camera and its window (--window on Achilles).
-  python3 - "$repo" "$B" "$RT/model" "$no_arducam" "$overhead" <<'PY'
+  # without the Arducam's device and camera (--no-arducam), with the
+  # overhead camera and its window (--window on Achilles), and with the
+  # enemy robot and its behavior (--enemy).
+  python3 - "$repo" "$B" "$RT/model" "$no_arducam" "$overhead" "$enemy" <<'PY'
 import os, shutil, sys, yaml
-repo, build, out, no_arducam, overhead = sys.argv[1:6]
+repo, build, out, no_arducam, overhead, enemy = sys.argv[1:7]
 assets = f"{repo}/assets/sentry"
 os.makedirs(out, exist_ok=True)
 dev = yaml.safe_load(open(f"{assets}/devices.yaml"))
@@ -155,6 +169,25 @@ if overhead == "1":
     text = head + sep + f"{indent}- overhead_mount.arow\n{indent}- parts/overhead_view.arow\n" + rest
     sim["windows"] = [{"sensor": "overhead_view", "view": "image", "title": "Field (overhead)", "fly": True}] + \
         list(sim.get("windows") or [])
+if enemy:
+    # The enemy (assets/enemy): its Achilles model beside ours, its MuJoCo
+    # one attached as a mocap body, and the hub's actor that moves it.
+    shutil.copytree(f"{build}/assets/enemy/achilles", f"{model}/enemy")
+    # One archetype is the world's root (ours): the enemy's rides our
+    # welded world joint, at the field's origin, so its root's pose is its
+    # world pose.
+    enemy_arow = f"{model}/enemy/enemy.arow"
+    e = open(enemy_arow).read()
+    open(enemy_arow, "w").write(e.replace("archetype: enemy\n", "archetype: enemy\nattach:\n  archetype: sentry\n  joint: world\n", 1))
+    head, sep, rest = text.partition("includes:\n")
+    indent = rest[:len(rest) - len(rest.lstrip(" "))]
+    text = head + sep + f"{indent}- enemy/enemy.arow\n" + rest
+    sim.setdefault("mujoco", {}).setdefault("elements", {})["enemy"] = {
+        "type": "attach", "file": f"{build}/assets/enemy/enemy_mujoco.urdf", "prefix": "enemy/"}
+    behavior = yaml.safe_load(open(f"{repo}/assets/enemy/behaviors/{enemy}.yaml"))
+    sim["actors"] = list(sim.get("actors") or []) + [
+        {"name": "enemy", "body": {"achilles": "enemy/base_footprint", "mujoco": "enemy/base_footprint"},
+         "z": 0.0, **behavior}]
 open(arow, "w").write(text)
 sim["models"]["arow"] = arow
 yaml.safe_dump(sim, open(f"{out}/sim.yaml", "w"), sort_keys=False)
