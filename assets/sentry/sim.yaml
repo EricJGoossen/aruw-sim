@@ -24,6 +24,11 @@ clock:
   dt: 0.001
   rate: 1.0
 status_period: 0
+# Ground truth for checking a run (scripts/autonav_check.py): the chassis's
+# footprint pose every 10 ms of sim time, to <run dir>/truth.jsonl.
+truth_log:
+  period: 0.01
+  body: {achilles: sentry/floating_base, mujoco: base_footprint}
 # The windows run.sh --window opens; headless, the hub ignores them. Each is
 # a sensor's view (view: image or depth for a camera, lidar for a lidar, plot
 # for a reading or a motor), and each costs the hub time on every draw. The
