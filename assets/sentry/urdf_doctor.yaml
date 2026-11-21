@@ -104,6 +104,14 @@ frames:
     xyz: [-0.135, 0.0, 0.046]
     rpy: [0.0, 0.0, 1.5707]
     source: otto sentry_name_config.yaml autonav.lidars[1] (port 1-4.4:1.0)
+  # The Odin (the 2026-27 autonav stack's lidar) on the turret major, facing
+  # back: its `imu` frame, which the Odin driver reports the pose of. Only
+  # scripts/run.sh --autonav puts a sensor on it.
+  odin:
+    parent: turret_major
+    xyz: [-0.155631, -0.034668, 0.1635]
+    rpy: [0.0, 0.0, 3.14159265]
+    source: project-otto feature/autonav_framework autonav/src/localization/config/localization.yaml odin_mount (CAD, 2026-11-20; to the lens, not the imu frame)
 
 # Visuals drawn in place of the primitives URDF's (Achilles draws visuals;
 # MuJoCo, which draws collision shapes, never sees these). Each replaces its
