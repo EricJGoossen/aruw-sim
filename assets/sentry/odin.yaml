@@ -1,0 +1,66 @@
+# The Odin1 (the 2026-27 autonav stack's lidar) as scripts/run.sh --autonav
+# serves it: what it sees (fov, rings) and how wrong its pose is (error).
+#
+# Measured on the sentry against OptiTrack: "Odin1 Error Characterization",
+# campaign odin1, 3 Oct 2026 (driver v0.14.4, relocalization into a prior map,
+# 10 Hz consumer rate; one 40 s held-out session and 6 relocalizations, so the
+# intervals are wide). Its model, which tools/autonav/hwemu_odin.py follows:
+#
+#   output pose = truth(t - delay) (+) eps(t)
+#   eps(t)      = R(heading)^T b_k + eta(t)
+#   b_k         ~ N(0, sigma_b^2), one draw per relocalization k, in the map frame
+#   eta_i[n+1]  = a_i eta_i[n] + sigma_i sqrt(1 - a_i^2) w_i[n],  a_i = exp(-dt / tau_i),  dt = 0.1 s
+#
+# eta's axes are body-aligned: along (the direction of travel, the heading when
+# still), cross, vertical, roll, pitch, yaw. w is Student-t with nu degrees of
+# freedom scaled to unit variance (nu: null is Gaussian). eta uses `moving`
+# above still_below m/s and `still` below it.
+
+rate_hz: 10.0
+delay_s: 0.0          # measured -3.9 +- 0.7 ms (header stamp vs truth): treated as zero
+
+# Registration offset b_reloc: sigma per axis (m, deg); its 95% intervals were
+# x 1.6-6.7 cm, y 0-1.2 cm, z 0.8-3.3 cm, roll 0.18-0.77, pitch 0.15-0.66, yaw 0.16-0.62 deg.
+registration: {x: 0.027, y: 0.002, z: 0.013, roll: 0.31, pitch: 0.26, yaw: 0.25}
+
+still_below: 0.05     # m/s
+moving:               # figure-8 at ~1 m/s, 1965 samples
+  along:    {sigma: 0.0098, tau: 1.74, nu: 2.1}
+  cross:    {sigma: 0.0098, tau: 2.04, nu: 3.0}
+  vertical: {sigma: 0.0052, tau: 7.5,  nu: 2.8}
+  roll:     {sigma: 0.30,   tau: 0.52, nu: 2.2}
+  pitch:    {sigma: 0.26,   tau: 0.43, nu: 3.0}
+  yaw:      {sigma: 0.22,   tau: 0.08, nu: null}
+still:                # 10 min hold, 5837 samples; near the mocap's floor, so upper bounds
+  along:    {sigma: 0.0010, tau: 0.36, nu: 7.4}
+  cross:    {sigma: 0.0005, tau: 0.55, nu: 6.7}
+  vertical: {sigma: 0.0010, tau: 0.40, nu: 8.4}
+  roll:     {sigma: 0.16,   tau: 0.42, nu: 7.7}
+  pitch:    {sigma: 0.17,   tau: 0.31, nu: 5.6}
+  yaw:      {sigma: 0.10,   tau: 0.36, nu: 7.2}
+
+# Relocalization at driver start (Table 2): no pose until the first fix,
+# 10.1-10.6 s after start in 4 of 4 trials. The driver starts with the sim.
+first_fix_s: 10.3
+# 1 of 7 fixes was wrong (14%, CI 0.4-58%): 21 cm and 3.0 deg off, mostly
+# 19 cm low with 2 deg of roll and pitch; Odin corrected it itself after ~36 s
+# (a new relocalization: a new b_k). Drawn at the first fix from the run's
+# seed (HWEMU_ODIN_SEED, default 1); HWEMU_ODIN_WRONG_FIX=1 forces it, 0 rules it out.
+wrong_fix:
+  probability: 0.14
+  offset: {horizontal: 0.09, z: -0.19, roll: 2.0, pitch: 2.0, yaw: 1.0}  # m, deg; signs of the planar ones drawn
+  lasts_s: 36.0
+# Not modelled: output stalls of 4-6 s when the window is covered (nothing
+# covers it in the sim), and loss of tracking (none in 15.4 min: <= 1 per ~5 min).
+
+# What it sees. The lidar's field of view is 126 deg wide (spec 120 x 90),
+# centred on the Odin's +x (out of the lens). The sim casts it as fans of
+# beams tilted down (pitch, deg; negative is up) about its y axis: enough to
+# sample the 0.10-0.40 m band the stack's maps are drawn for (the Odin sits
+# 0.30 m up), which one level ring at 0.30 m misses about half of.
+fov_deg: 126.0
+samples: 240          # per fan: 120 each side of +x, whole LD19 packets
+min_range: 0.05
+max_range: 20.0
+period: 0.1
+fan_pitch_deg: [-4, 0, 3, 6, 10, 15, 22, 32]

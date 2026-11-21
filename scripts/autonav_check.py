@@ -189,6 +189,20 @@ def analyse(run):
     res.update(loc_n=len(loc), loc_median=percentile(lerr, 50), loc_p95=percentile(lerr, 95),
                loc_max=max(lerr) if lerr else float("nan"),
                loc_yaw_median_deg=math.degrees(percentile(lyaw, 50)) if lyaw else float("nan"))
+
+    # -- the Odin's own pose (run.sh --autonav): its output vs the truth it was made from
+    odin_path = os.path.join(run, "autonav", "odin_pose.jsonl")
+    odin = read_jsonl(odin_path) if os.path.exists(odin_path) else []
+    oerr = [math.hypot(r["x"] - r["true"][0], r["y"] - r["true"][1]) for r in odin]
+    oyaw = [abs(wrap(r["yaw"] - r["true"][3])) for r in odin]
+    ev_path = os.path.join(run, "autonav", "odin_events.jsonl")
+    events = read_jsonl(ev_path) if os.path.exists(ev_path) else []
+    fixes = [e for e in events if e.get("event") in ("relocalized", "wrong fix")]
+    res.update(odin_n=len(odin), odin_first_fix=odin[0]["t"] if odin else float("nan"),
+               odin_rms=math.sqrt(sum(e * e for e in oerr) / len(oerr)) if oerr else float("nan"),
+               odin_max=max(oerr) if oerr else float("nan"),
+               odin_yaw_rms_deg=math.degrees(math.sqrt(sum(e * e for e in oyaw) / len(oyaw))) if oyaw else float("nan"),
+               odin_fixes=", ".join(f"{e['event']} t={e['t']:.1f}" for e in fixes) or "none")
     return res
 
 
@@ -219,6 +233,12 @@ ROWS = [
     ("localization error, 95th pct (m)", "loc_p95", "{:.3f}"),
     ("localization error, worst (m)", "loc_max", "{:.3f}"),
     ("localization heading error, median (deg)", "loc_yaw_median_deg", "{:.2f}"),
+    ("Odin poses (--autonav)", "odin_n", "{}"),
+    ("Odin first pose (s)", "odin_first_fix", "{:.1f}"),
+    ("Odin pose error, rms (m)", "odin_rms", "{:.3f}"),
+    ("Odin pose error, worst (m)", "odin_max", "{:.3f}"),
+    ("Odin heading error, rms (deg)", "odin_yaw_rms_deg", "{:.2f}"),
+    ("Odin fixes", "odin_fixes", "{}"),
 ]
 
 

@@ -42,8 +42,12 @@
 #                 feature/autonav_framework): that branch's otto, with its
 #                 bridge on, and its localization (AMCL on the Odin's scan,
 #                 against a map of this field, tools/field_map.py), in the
-#                 ROS 2 Humble container (docker/autonav); the Odin is a lidar
-#                 at its mount (tools/autonav/hwemu_odin.py). Set it up once
+#                 ROS 2 Humble container (docker/autonav); the Odin is fans
+#                 of beams at its mount with its measured pose error
+#                 (assets/sentry/odin.yaml, tools/autonav/hwemu_odin.py;
+#                 HWEMU_ODIN_SEED seeds it, HWEMU_ODIN_WRONG_FIX=1/0 forces
+#                 or rules out a wrong first fix, HWEMU_ODIN_FIRST_FIX_S
+#                 moves its first fix). Set it up once
 #                 with scripts/autonav_setup.sh. Its logs: logs/ros.log.
 #                 The branch has no ROS 2 planner yet, so the robot gets no
 #                 paths: it localizes where it stands.
@@ -192,20 +196,27 @@ dev = yaml.safe_load(open(f"{assets}/devices.yaml"))
 dev["plugins"] = [os.path.normpath(os.path.join(assets, p)) for p in dev.get("plugins", [])]
 if no_arducam == "1":
     dev["devices"] = [d for d in dev["devices"] if d.get("type") != "arducam"]
-odin = None
+odin = []
 if autonav == "1":
-    # The Odin, as the autonav stack slices it: a 360-degree ring at its mount
-    # (the model's odin frame), served LD19-style on <run dir>/odin for
-    # tools/autonav/hwemu_odin.py.
-    odin = {"name": "odin", "type": "ld19_lidar", "transport": {"port": "odin"},
-            "params": {"min_range": 0.05, "max_range": 20.0},
-            "bind": {"lidar": "odin_scan",
-                     # ignore_robot: its CAD mount is inside the coarse turret major's collision
-                     # shape, so it would see nothing but the robot's insides.
-                     "mujoco": {"odin_scan": {"type": "lidar", "body": "odin", "samples": 720,
-                                              "min_range": 0.05, "max_range": 20.0, "period": 0.1,
-                                              "ignore_robot": True}}}}
-    dev["devices"].append(odin)
+    # The Odin, as assets/sentry/odin.yaml has it: fans of beams across its
+    # field of view at its mount (the model's odin frame), each tilted down by
+    # its pitch and served LD19-style on <run dir>/odin_f<k> for
+    # tools/autonav/hwemu_odin.py, which merges them into its cloud.
+    import math
+    oc = yaml.safe_load(open(f"{assets}/odin.yaml"))
+    for k, pitch in enumerate(oc["fan_pitch_deg"]):
+        h = math.radians(pitch) / 2
+        odin.append({"name": f"odin_f{k}", "type": "ld19_lidar", "transport": {"port": f"odin_f{k}"},
+                     "params": {"min_range": oc["min_range"], "max_range": oc["max_range"]},
+                     "bind": {"lidar": f"odin_f{k}_scan",
+                              # ignore_robot: its CAD mount is inside the coarse turret major's collision
+                              # shape, so it would see nothing but the robot's insides.
+                              "mujoco": {f"odin_f{k}_scan": {
+                                  "type": "lidar", "body": "odin", "quat": [math.cos(h), 0.0, math.sin(h), 0.0],
+                                  "samples": oc["samples"], "fov": math.radians(oc["fov_deg"]),
+                                  "min_range": oc["min_range"], "max_range": oc["max_range"],
+                                  "period": oc["period"], "ignore_robot": True}}}})
+    dev["devices"] += odin
 yaml.safe_dump(dev, open(f"{out}/devices.yaml", "w"), sort_keys=False)
 sim = yaml.safe_load(open(f"{assets}/sim.yaml"))
 for k in ("urdf", "arow", "achilles_config"):
@@ -243,17 +254,17 @@ if enemy:
     sim["actors"] = list(sim.get("actors") or []) + [
         {"name": "enemy", "body": {"achilles": "enemy/base_footprint", "mujoco": "enemy/base_footprint"},
          "z": 0.0, **behavior}]
-if odin is not None:
-    # Its Achilles sensor, made the way scripts/build.sh makes the others.
+if odin:
+    # Its Achilles sensors, made the way scripts/build.sh makes the others.
     os.makedirs(f"{out}/odin", exist_ok=True)
-    yaml.safe_dump({"devices": [odin]}, open(f"{out}/odin/devices.yaml", "w"), sort_keys=False)
+    yaml.safe_dump({"devices": odin}, open(f"{out}/odin/devices.yaml", "w"), sort_keys=False)
     open(f"{out}/odin/sim.yaml", "w").write("{}\n")  # the sensor only: sim.yaml's elements are made already
     subprocess.run([sys.executable, f"{repo}/hw-emulator/tools/elements_to_arow.py", "--devices", f"{out}/odin/devices.yaml",
                     "--sim", f"{out}/odin/sim.yaml", "--archetype", "sentry", "--robot", arow, "--out", f"{model}/parts",
                     "--gaps", f"{out}/odin/gaps.jsonl"], check=True)
     head, sep, rest = text.partition("includes:\n")
     indent = rest[:len(rest) - len(rest.lstrip(" "))]
-    text = head + sep + f"{indent}- parts/odin_scan.arow\n" + rest
+    text = head + sep + "".join(f"{indent}- parts/{d['name']}_scan.arow\n" for d in odin) + rest
 open(arow, "w").write(text)
 sim["models"]["arow"] = arow
 yaml.safe_dump(sim, open(f"{out}/sim.yaml", "w"), sort_keys=False)
@@ -402,7 +413,9 @@ PY
     # Both containers share the host's network (DDS), IPC (/dev/shm: the hub's
     # clock and cameras) and PTYs (/dev/pts), and see the repo at its path.
     an_run=(docker run --rm --init --user "$(id -u):$(id -g)" -e HOME="$B/home"
-            --network host --ipc host -v /dev/pts:/dev/pts -v "$repo:$repo" -e HWEMU_RUNTIME_DIR="$RT")
+            --network host --ipc host -v /dev/pts:/dev/pts -v "$repo:$repo" -e HWEMU_RUNTIME_DIR="$RT"
+            -e HWEMU_ODIN_SEED="${HWEMU_ODIN_SEED:-1}" -e HWEMU_ODIN_WRONG_FIX="${HWEMU_ODIN_WRONG_FIX:-}"
+            -e HWEMU_ODIN_FIRST_FIX_S="${HWEMU_ODIN_FIRST_FIX_S:-}")
     start ros "${an_run[@]}" --name "aruw-sim-ros-$$" -e HWEMU_PROCESS=ros "$AN_IMAGE" \
       bash "$repo/tools/autonav/ros_side.sh" "$RT" "$AN_WS"
     env_flags=()
