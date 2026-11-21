@@ -170,6 +170,13 @@ fi
 
 B="$repo/build"
 RT="${ARUW_SIM_RUNTIME_DIR:-$B/run/$backend}"
+# The hub's Unix sockets live in it, and a socket's path can't pass 107 bytes.
+if [ $(( ${#RT} + 16 )) -gt 107 ]; then
+  echo "run.sh: the run dir's path is too long for the hub's sockets (${#RT} bytes; at most 91):" >&2
+  echo "  $RT" >&2
+  echo "  Clone aruw-sim somewhere shorter, or set ARUW_SIM_RUNTIME_DIR to a shorter directory." >&2
+  exit 2
+fi
 HUB="$B/cmake/hw-emulator/hwemu"
 ELF="$repo/aruw-mcb/aruw-mcb-project/build/sim-hwemu/scons-$profile/TARGET_SENTRY_ACHLYS/aruw-mcb.elf"
 # otto's target (--otto): comp is the submodule; the others are worktrees
