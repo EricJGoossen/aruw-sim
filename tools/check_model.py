@@ -143,7 +143,9 @@ def main() -> int:
     frame_check("arducam", ard["translation"] + ard["rotation"],
                 "project-otto sentry_name_config.yaml arducam_cameras[0].base_reference_to_camera_transform")
     for i, frame in enumerate(["lidar_front", "lidar_back"]):
-        lidar = otto["autonav"]["lidars"][i]
+        # otto main nests the lidars under autonav; the 2026 comp branch has them at the top.
+        lidars = otto["autonav"]["lidars"] if isinstance(otto.get("autonav"), dict) else otto["lidars"]
+        lidar = lidars[i]
         frame_check(frame, lidar["lidar_position_to_chassis_frame"] + lidar["lidar_orientation_to_chassis_frame"],
                     f"project-otto sentry_name_config.yaml autonav.lidars[{i}]", planar=True)
 

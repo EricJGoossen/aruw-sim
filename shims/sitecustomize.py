@@ -5,7 +5,8 @@ scripts/run.sh puts aruw-sim's shims/ on otto's PYTHONPATH, and Python imports
 Only with HWEMU_RUNTIME_DIR set (a sim run), and HWEMU_SIM_TIME not "0":
 
 - **Sim time.** time.time / time_ns, monotonic / monotonic_ns, perf_counter /
-  perf_counter_ns and sleep read and wait on the hub's clock
+  perf_counter_ns, clock_gettime / clock_gettime_ns (the realtime and
+  monotonic clocks) and sleep read and wait on the hub's clock
   (hwemu.clock.SimClock), so a process stopped at a breakpoint, or a sim
   running slower than real time, never sees a timeout it wouldn't see on the
   robot. time.time keeps a wall-clock epoch: it is the wall time at startup
@@ -21,6 +22,12 @@ Only with HWEMU_RUNTIME_DIR set (a sim run), and HWEMU_SIM_TIME not "0":
   when otto imports it, shims/hwemu_detector_stub.py's stand-in replaces it:
   no torch, no CUDA, no detections, and the gap `detector: disabled`, which
   scripts/smoke.sh fails on.
+- **True targets** (HWEMU_TRUTH_TARGETS set; run.sh --enemy sets it): otto's
+  turret selection is handed the enemy's true state instead
+  (shims/hwemu_truth_targets.py), so its auto-nav reacts to the enemy.
+- **Jetson-only wheels** the 2026 comp branch imports have stand-ins here:
+  rm_pose_solver and sumedh_quick_uint16_median (otto main's own Python
+  ports) and robomaster_particle_filters (import-only).
 - **Gaps.** Log records carrying "[hwemu GAP] source: message" (what the otto
   patch logs) are recorded in <runtime dir>/gaps/$HWEMU_PROCESS.jsonl, like
   hwemu.gaps.report's.
@@ -60,7 +67,7 @@ def _install() -> None:
 
     logging.Logger.handle = handle  # type: ignore[method-assign]
 
-    _install_detector_stub(here)
+    _install_otto_hooks(here, repo)
 
     if os.environ.get("HWEMU_SIM_TIME", "1") == "0":
         return
@@ -75,7 +82,8 @@ def _install() -> None:
         return
 
     real = {name: getattr(time, name) for name in
-            ("time", "time_ns", "monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "sleep")}
+            ("time", "time_ns", "monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "sleep",
+             "clock_gettime", "clock_gettime_ns")}
     pc = hclock.process_clock()
     epoch = pc.epoch()
 
@@ -127,6 +135,27 @@ def _install() -> None:
             # unless it runs faster than real time.
             real["sleep"](min(max(left, 0.0002), 0.002))
 
+    # clock_gettime(_ns) on the wall and monotonic clocks, as the functions
+    # above (the 2026 comp branch's JetsonTimestamp reads CLOCK_REALTIME this
+    # way); other clocks (CPU time) stay real.
+    sim_clocks = {
+        time.CLOCK_REALTIME: (sim_time, sim_time_ns),
+        time.CLOCK_MONOTONIC: (sim_monotonic, sim_monotonic_ns),
+    }
+    for name in ("CLOCK_MONOTONIC_RAW", "CLOCK_BOOTTIME"):
+        if hasattr(time, name):
+            sim_clocks[getattr(time, name)] = (sim_monotonic, sim_monotonic_ns)
+
+    def sim_clock_gettime(clk_id: int) -> float:
+        f = sim_clocks.get(clk_id)
+        return f[0]() if f is not None else real["clock_gettime"](clk_id)
+
+    def sim_clock_gettime_ns(clk_id: int) -> int:
+        f = sim_clocks.get(clk_id)
+        return f[1]() if f is not None else real["clock_gettime_ns"](clk_id)
+
+    time.clock_gettime = sim_clock_gettime
+    time.clock_gettime_ns = sim_clock_gettime_ns
     time.time = sim_time
     time.time_ns = sim_time_ns
     time.monotonic = sim_monotonic
@@ -147,16 +176,15 @@ def _install() -> None:
         print(f"[hwemu] {name}: in lockstep with the hub", file=sys.stderr, flush=True)
 
 
-def _install_detector_stub(shims_dir: str) -> None:
-    """Swaps otto's IconTargetDetector for the sim's stub as its module loads."""
+def _after_import(names, then) -> None:  # type: ignore[no-untyped-def]
+    """Runs then(module) once the first of `names` (one module, under each otto layout:
+    the 2026 comp branch's and main's) has loaded."""
     import importlib.abc
     import importlib.util
 
-    target = "project_otto.vision.target_detector._target_detector"
-
     class Finder(importlib.abc.MetaPathFinder):
         def find_spec(self, name, path, target_module=None):  # type: ignore[no-untyped-def]
-            if name != target:
+            if name not in names:
                 return None
             sys.meta_path.remove(self)  # once is enough; and no recursion below
             spec = importlib.util.find_spec(name)
@@ -164,18 +192,39 @@ def _install_detector_stub(shims_dir: str) -> None:
                 return spec
             exec_module = spec.loader.exec_module
 
-            def exec_and_stub(module):  # type: ignore[no-untyped-def]
+            def exec_then(module):  # type: ignore[no-untyped-def]
                 exec_module(module)
-                if shims_dir not in sys.path:
-                    sys.path.insert(0, shims_dir)
-                from hwemu_detector_stub import make_stub
+                then(module)
 
-                module.IconTargetDetector = make_stub(module.TargetDetector)
-
-            spec.loader.exec_module = exec_and_stub  # type: ignore[method-assign]
+            spec.loader.exec_module = exec_then  # type: ignore[method-assign]
             return spec
 
     sys.meta_path.insert(0, Finder())
+
+
+def _install_otto_hooks(shims_dir: str, repo: str) -> None:
+    """The sim's stand-ins inside otto, as its modules load (either layout)."""
+    if shims_dir not in sys.path:
+        sys.path.insert(0, shims_dir)
+
+    def stub_detector(module):  # type: ignore[no-untyped-def]
+        from hwemu_detector_stub import make_stub
+
+        module.IconTargetDetector = make_stub(module.TargetDetector)
+
+    _after_import(
+        ("project_otto.vision.target_detector._target_detector", "project_otto.target_detector._target_detector"),
+        stub_detector,
+    )
+
+    if os.environ.get("HWEMU_TRUTH_TARGETS", "0") not in ("", "0"):
+
+        def truth_targets(module):  # type: ignore[no-untyped-def]
+            import hwemu_truth_targets
+
+            hwemu_truth_targets.install(module, repo)
+
+        _after_import(("project_otto.vision.turret._turret", "project_otto.turret._turret"), truth_targets)
 
 
 if os.environ.get("HWEMU_RUNTIME_DIR"):

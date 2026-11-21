@@ -33,8 +33,11 @@
 #                 blue team) that the hub moves by behavior B, one of
 #                 assets/enemy/behaviors/*.yaml (patrol: laps between the
 #                 Capture Point and blue's Resupply Zone). It collides, blocks
-#                 lidars and shows in cameras, but runs no firmware. Default:
-#                 no enemy.
+#                 lidars and shows in cameras, but runs no firmware. otto's
+#                 detector can't run in the sim, so otto is handed the enemy's
+#                 true state whenever it's in line of sight
+#                 (shims/hwemu_truth_targets.py): its auto-nav and aim react to
+#                 it. Default: no enemy.
 #   --no-arducam  leave the Arducam out of the sim (its device and its camera):
 #                 otto doesn't read it by default (arducam_aruco: False), and
 #                 rendering it, 1280x800 at 120 Hz, costs more than the rest of
@@ -309,7 +312,11 @@ PY
     echo "[run] otto: waiting for a debugger on :5678 (VS Code: \"Attach otto\")" >&2
     otto_cmd=("$OV/bin/python" -m debugpy --listen 0.0.0.0:5678 --wait-for-client "$repo/project-otto/project_otto/main.py")
   fi
-  start otto env -C "$RT/otto" HWEMU_PROCESS=otto PYTHONPATH="$pypath" "${lock_env[@]}" "${otto_cmd[@]}" \
+  # With an enemy, otto's targets are its true state (shims/hwemu_truth_targets.py):
+  # its detector can't run here, so it would never see one.
+  truth_targets=0; [ -n "$enemy" ] && truth_targets=1
+  start otto env -C "$RT/otto" HWEMU_PROCESS=otto HWEMU_TRUTH_TARGETS="$truth_targets" PYTHONPATH="$pypath" \
+    "${lock_env[@]}" "${otto_cmd[@]}" \
     "$RT/otto_sim.yaml" "$repo/project-otto/sentry_name_config.yaml" "$repo/project-otto/base_config.yaml"
 fi
 
