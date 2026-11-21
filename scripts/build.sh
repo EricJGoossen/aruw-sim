@@ -4,10 +4,10 @@
 #   scripts/build.sh [--profile debug|release] [--only STEP[,STEP...]] [-j N]
 #
 # Steps, in order (--only picks some):
-#   patches  apply patches/aruw-mcb.patch, patches/aruw-mcb-fixes.patch (firmware
-#            bugs the sim found; ARUW_SIM_NO_FIXES=1 skips it) and
-#            patches/project-otto.patch to their submodules, idempotently;
-#            refuses loudly if one no longer applies (and isn't already applied)
+#   patches  apply patches/aruw-mcb.patch and patches/project-otto/comp.patch
+#            to their submodules, idempotently; refuses loudly if one no
+#            longer applies (and isn't already applied). Otto's other targets
+#            (main, autonav) are worktrees: scripts/otto_setup.sh
 #   model    tools/doctor_urdf.py, then the Achilles model (Achilles's
 #            tools/urdf_to_arow.py + hw-emulator's tools/elements_to_arow.py)
 #            and the enemy robot (tools/enemy_model.py, assets/enemy), when
@@ -20,8 +20,9 @@
 #            uv.lock or pyproject.toml changed
 #
 # check_model.py stops the build on a mismatch. The three known ones (see
-# docs/PLAN.md) are let through for test runs with
-#   HWEMU_ACCEPT_MISMATCH=wheelbase_radius.joint_fl_wheel,...
+# docs/PLAN.md, scripts/known_mismatches.sh) are let through by default, and
+# still printed; HWEMU_ACCEPT_MISMATCH overrides the list (set it empty to
+# let none through).
 #
 # The job count defaults to 2 (Achilles's tests and the hub link take
 # several GB per job); -j or ARUW_SIM_JOBS overrides it, and it's capped at
@@ -81,7 +82,7 @@ stamp_set() { echo "$2" >"$B/stamps/$1"; }
 
 # --- patches -----------------------------------------------------------------
 apply_patch() {
-  local sub="$1" patch="$repo/patches/${2:-$1}.patch"
+  local sub="$1" patch="$repo/patches/$2"
   [ -f "$patch" ] || return 0
   if git -C "$sub" apply --reverse --check "$patch" 2>/dev/null; then
     echo "  $sub: $(basename "$patch") already applied"
@@ -97,11 +98,9 @@ apply_patch() {
 }
 if want patches; then
   step "patches"
-  apply_patch aruw-mcb
-  # Firmware bug fixes the sim found -- not emulator interface, so kept apart
-  # for upstreaming (docs/PLAN.md). ARUW_SIM_NO_FIXES=1 leaves them out.
-  [ "${ARUW_SIM_NO_FIXES:-0}" = "1" ] || apply_patch aruw-mcb aruw-mcb-fixes
-  apply_patch project-otto
+  # The firmware's emulator hooks, and the firmware bugs the sim found.
+  apply_patch aruw-mcb aruw-mcb.patch
+  apply_patch project-otto project-otto/comp.patch
 fi
 
 # --- model -------------------------------------------------------------------
@@ -112,6 +111,7 @@ if want model; then
   h="$(inputs_hash tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$ASSETS"/sentry_description/urdf/*.urdf assets/field/*.yaml)"
   if ! stamp_ok doctor "$h" || [ ! -f "$OUT/sentry_mujoco.urdf" ]; then
     # Its gaps are printed and kept, as model gaps, for every run's report.
+    mkdir -p "$OUT"
     python3 tools/doctor_urdf.py "$ASSETS/urdf_doctor.yaml" "$OUT" 2>&1 | tee "$OUT.doctor.log"
     mkdir -p "$OUT"
     python3 - "$OUT.doctor.log" "$OUT/doctor_gaps.jsonl" <<'PY'
@@ -158,6 +158,10 @@ PY
     stamp_set enemy "$h"
   else
     echo "  enemy model up to date"
+  fi
+  if [ -z "${HWEMU_ACCEPT_MISMATCH+set}" ]; then
+    source "$repo/scripts/known_mismatches.sh"
+    echo "  letting the known model mismatches through (scripts/known_mismatches.sh)"
   fi
   python3 tools/check_model.py
 fi

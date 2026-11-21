@@ -41,6 +41,13 @@ while IFS='=' read -r name _; do
   case "$name" in ARUW_SIM_*|HWEMU_*|UV_*|PYTHON*|LP_NUM_THREADS) env_flags+=(-e "$name") ;; esac
 done < <(env)
 
+# A run dir outside the checkout (ARUW_SIM_RUNTIME_DIR) is mounted at its own path too.
+extra_mounts=()
+if [ -n "${ARUW_SIM_RUNTIME_DIR:-}" ]; then
+  rt="$(mkdir -p "$ARUW_SIM_RUNTIME_DIR" && cd "$ARUW_SIM_RUNTIME_DIR" && pwd)"
+  case "$rt/" in "$repo"/*) ;; *) extra_mounts+=(-v "$rt:$rt") ;; esac
+fi
+
 exec docker run --rm "${tty_flags[@]}" --init \
   --user "$(id -u):$(id -g)" -e HOME="$repo/build/home" \
   --network host --ipc host --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
@@ -48,5 +55,5 @@ exec docker run --rm "${tty_flags[@]}" --init \
   -e ARUW_SIM_CONTAINER=1 \
   -e UV_CACHE_DIR="$repo/build/uv-cache" -e UV_PYTHON_INSTALL_DIR="$repo/build/uv-python" \
   -e CCACHE_DIR="$repo/build/ccache" \
-  -v "$repo:$repo" -w "$repo" \
+  -v "$repo:$repo" "${extra_mounts[@]}" -w "$repo" \
   "$image" "${@:-bash}"
