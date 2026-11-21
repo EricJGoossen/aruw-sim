@@ -177,6 +177,18 @@ def analyse(run):
                n_dest=len(set(dests)), n_reached=len(reached),
                cross_median=percentile(cross, 50), cross_p95=percentile(cross, 95),
                cross_max=max(cross) if cross else float("nan"))
+
+    # -- the ROS 2 localization (run.sh --autonav): its pose of the turret major vs truth
+    loc_path = os.path.join(run, "autonav", "localization.jsonl")
+    loc = read_jsonl(loc_path) if os.path.exists(loc_path) else []
+    lerr, lyaw = [], []
+    for r in loc:
+        tr = truth_at(r["t"])
+        lerr.append(math.hypot(r["x"] - tr["x"], r["y"] - tr["y"]))
+        lyaw.append(abs(wrap(r["yaw"] - tr["yaw"] - tr.get("encoders", {}).get("major_yaw_encoder", 0.0))))
+    res.update(loc_n=len(loc), loc_median=percentile(lerr, 50), loc_p95=percentile(lerr, 95),
+               loc_max=max(lerr) if lerr else float("nan"),
+               loc_yaw_median_deg=math.degrees(percentile(lyaw, 50)) if lyaw else float("nan"))
     return res
 
 
@@ -202,6 +214,11 @@ ROWS = [
     ("cross-track error, worst (m)", "cross_max", "{:.3f}"),
     ("distinct destinations", "n_dest", "{}"),
     ("destinations reached", "n_reached", "{}"),
+    ("localization poses (--autonav)", "loc_n", "{}"),
+    ("localization error, median (m)", "loc_median", "{:.3f}"),
+    ("localization error, 95th pct (m)", "loc_p95", "{:.3f}"),
+    ("localization error, worst (m)", "loc_max", "{:.3f}"),
+    ("localization heading error, median (deg)", "loc_yaw_median_deg", "{:.2f}"),
 ]
 
 

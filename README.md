@@ -44,7 +44,8 @@ and paths match inside and out.
 | | |
 |---|---|
 | [`build.sh`](scripts/build.sh) `[--profile debug\|release] [--only STEP,…] [-j N]` | applies `patches/` idempotently, doctors the URDF and builds the Achilles model, runs `check_model.py`, builds the hub + Achilles + MuJoCo + `libaruw_devices` (CMake/Ninja/ccache), the firmware (`scons build-sim robot=SENTRY_ACHLYS`) and otto's venv (`uv sync --frozen`). Incremental; `-j 2` by default, capped by memory |
-| [`run.sh`](scripts/run.sh) `[--backend achilles\|mujoco] [--window] [--lockstep] [--debug mcb\|otto\|hub] [--rr] [--seconds N] [--compare] [--no-build] [--enemy BEHAVIOR]` | builds, then starts the hub, the MCB and otto; per-process logs in `build/run/<backend>/logs/`, prefixed output on the console; if one dies the rest stop; prints the gap report at the end. `--enemy patrol` adds a blue sentry the hub drives by `assets/enemy/behaviors/patrol.yaml` (default: none) |
+| [`run.sh`](scripts/run.sh) `[--backend achilles\|mujoco] [--window] [--lockstep] [--debug mcb\|otto\|hub] [--rr] [--seconds N] [--compare] [--no-build] [--enemy BEHAVIOR] [--autonav\|--autonav-drive]` | builds, then starts the hub, the MCB and otto; per-process logs in `build/run/<backend>/logs/`, prefixed output on the console; if one dies the rest stop; prints the gap report at the end. `--enemy patrol` adds a blue sentry the hub drives by `assets/enemy/behaviors/patrol.yaml` (default: none). `--autonav` runs the 2026-27 ROS 2 autonav stack instead of the comp branch's (see below) |
+| [`autonav_setup.sh`](scripts/autonav_setup.sh) `[REF]` | one-time setup for `run.sh --autonav`: a worktree of project-otto `feature/autonav_framework` in `build/otto-autonav` (the submodule stays on the comp branch), its venv, the `aruw-autonav:humble` image (`docker/autonav`), and its ROS packages built in `build/autonav-ws` |
 | [`smoke.sh`](scripts/smoke.sh) `[--seconds 30] [--backend …]` | lockstep, headless runs on each backend, checked: MCB boot, both turret-MCB links and IMU calibration, chassis rotation (truth) and translation (MCB odometry), otto's odometry/lidar/frames/referee, and no gap outside `assets/sentry/known_gaps.yaml` |
 | [`gaps.sh`](scripts/gaps.sh) `[RUN_DIR] [--check]` | a run's gaps from every process (hub, MCB, otto, model), new ones marked; writes `gaps.json` |
 | [`compare.py`](scripts/compare.py) (`run.sh --compare`) | the hub in-process, printing the firmware's odometry next to sim truth (for settling sign conventions); writes `compare.json` |
@@ -77,7 +78,9 @@ assets/sentry/  sentry_description/ (the CAD export), urdf_doctor.yaml, devices.
                 otto_sim.yaml, known_gaps.yaml
 assets/enemy/   enemy.yaml (the opponent sentry run.sh --enemy adds), behaviors/ (its routes)
 shims/          gi/ (GStreamer for otto's Arducam), sitecustomize.py (sim time, lockstep)
-tools/          doctor_urdf.py, check_model.py, gap_report.py, enemy_model.py
+tools/          doctor_urdf.py, check_model.py, gap_report.py, enemy_model.py,
+                field_map.py (the field as a ROS occupancy map), autonav/ (run.sh --autonav's ROS side)
+docker/autonav/ the ROS 2 Humble image run.sh --autonav runs otto and the ROS nodes in
 scripts/        build.sh run.sh smoke.sh gaps.sh compare.py dev.sh gdb.sh known_mismatches.sh
 .vscode/        launch.json, tasks.json
 ```
@@ -108,3 +111,27 @@ mismatch. Today it reports three, left for the owner to resolve (see
 
 See [docs/PLAN.md](docs/PLAN.md) for what's done, what's open, and the
 decisions waiting on the owner.
+
+## The 2026-27 autonav stack (`run.sh --autonav`)
+
+project-otto's `feature/autonav_framework` moves navigation to ROS 2: AMCL
+localizes the sentry from its Odin lidar against a field map, and a bridge
+inside otto sends each fix to the MCB as the ArUco-localization message, which
+the MCB's wheel EKF fuses. `scripts/autonav_setup.sh` once, then
+`scripts/run.sh --autonav` runs it against the sim:
+
+- The hub and the MCB run on the host (not the dev container), so that otto
+  and the ROS nodes, each in an `aruw-autonav:humble` container on the host's
+  network, IPC and PTYs, can reach them.
+- The Odin is a 360-degree lidar ring at its CAD mount on the turret major
+  (the model's `odin` frame), which is the band the localization node cuts
+  its scan from; `tools/autonav/hwemu_odin.py` stands in for its driver
+  (cloud, odometry as truth, `/clock`). Both are reported as gaps.
+- The map is this field's (`tools/field_map.py`), not the branch's ARCC 2027
+  one: a different field from the sim's 2026 one.
+- The branch has no ROS 2 planner yet, so the robot gets no paths.
+  `--autonav-drive` also runs the legacy planner (a sim-only switch in
+  `patches/project-otto-autonav.patch`) to watch the localization while it
+  drives. `scripts/autonav_check.py` reports the localization's error against
+  truth from `<run dir>/autonav/localization.jsonl`.
+

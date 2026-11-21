@@ -198,9 +198,11 @@ def build_field(world_link, field: dict) -> None:
                 x = [road["x0"], road["x0"] + count * tile]
                 if flip:
                     x = mirrored_x(x)
-                # The plates are 2.5 mm: drawn, not collided.
+                # The plates are 2.5 mm: drawn, and collided only under the bumps,
+                # which sit on them (without the plates they'd stand 6.2 mm proud
+                # of the floor instead of 3.7 mm).
                 add_box(f"bumpy_road{suffix}_row{row}", [x[0], y[0], 0.0],
-                        [x[1], y[1], road["plate_thickness"]], road["color"], False)
+                        [x[1], y[1], road["plate_thickness"]], road["color"], bool(road.get("bumps")))
                 if not road.get("bumps"):
                     continue
                 for i in range(count):
@@ -317,6 +319,13 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
     if ow:
         r_roll, length = ow["roller_radius"], ow["roller_length"]
         centre = ow["wheel_radius"] - r_roll
+        # Measured in beyblade runs (truth-logged wheel encoders vs the chassis's true motion):
+        # a roller touches down still spinning as it was a wheel turn ago, and the soft
+        # (MuJoCo-model, both backends) contact spins it up over ~10 ms, longer than it stays
+        # down, so it skids sideways; the polygon of contacts also hops the hub.
+        gap("omni wheels: discrete rollers on soft contacts skid sideways while the chassis spins and "
+            "translates (~0.8 m/s rms at 13 rad/s), so wheel odometry runs ahead by ~0.3 s x the "
+            "chassis's acceleration: about 4%/m of drift in beyblade, not a real wheel's")
         for wheel in ow["wheels"]:
             link = need_link(wheel, "omni wheel")
             joint = next((j for j in joints.values() if j.find("child").get("link") == wheel), None)
