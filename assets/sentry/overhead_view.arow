@@ -1,0 +1,23 @@
+# An overhead view of the field, for run.sh --window on Achilles: a camera
+# fixed to the world, 12 m above the field's centre (6, 4), looking straight
+# down. The image has the field's length (x) left to right and the High
+# Ground (y = 8) at the top, as in the rules' Figure 3-3. 780 x 540 at
+# fx = fy = 720 px frames the 13 m x 9 m base plate.
+#
+# Achilles's camera looks along its own +x, with +y left and +z up; the
+# rotation (w, x, y, z) turns those onto -z, -x and +y of the world.
+#
+# Nothing reads it but the window: no device binds it. 15 Hz of sim time.
+sensor: overhead_view
+kind: camera
+attach: {archetype: sentry, joint: world}
+config:
+  mount: {translation: [6.0, 4.0, 12.0], rotation: [0.5, -0.5, 0.5, 0.5]}
+  period: 0.0666667
+  width: 780
+  height: 540
+  fx: 720
+  fy: 720
+  cx: 390
+  cy: 270
+  far: 20

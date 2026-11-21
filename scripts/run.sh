@@ -8,7 +8,9 @@
 #
 #   --backend     the physics backend (default achilles)
 #   --window      open the sensor windows sim.yaml lists under `windows:` (the
-#                 sentry's: the RealSense's image), via DISPLAY (WSLg works).
+#                 sentry's: the RealSense's image), via DISPLAY (WSLg works);
+#                 on Achilles also an overhead view of the field, a camera
+#                 12 m up (assets/sentry/overhead_view.arow).
 #                 They draw on the hub's thread, so they cost sim speed: drawn
 #                 at 30 Hz with 8 llvmpipe threads, about 10% of the rate
 #   --window-hz N how often the windows draw (default 30; fewer: faster sim)
@@ -119,17 +121,21 @@ lock_env=()
 if [ "$lockstep" = 1 ]; then lock_env=(HWEMU_LOCKSTEP=1); fi
 
 sim_yaml=assets/sentry/sim.yaml devices_yaml=assets/sentry/devices.yaml
-if [ "$no_arducam" = 1 ]; then
-  # This run's sim.yaml and devices.yaml, and a copy of the Achilles model,
-  # without the Arducam's device and camera.
-  python3 - "$repo" "$B" "$RT/model" <<'PY'
+overhead=0
+[ "$window" = 1 ] && [ "$backend" = achilles ] && overhead=1
+if [ "$no_arducam" = 1 ] || [ "$overhead" = 1 ]; then
+  # This run's sim.yaml and devices.yaml, and a copy of the Achilles model:
+  # without the Arducam's device and camera (--no-arducam), and with the
+  # overhead camera and its window (--window on Achilles).
+  python3 - "$repo" "$B" "$RT/model" "$no_arducam" "$overhead" <<'PY'
 import os, shutil, sys, yaml
-repo, build, out = sys.argv[1:4]
+repo, build, out, no_arducam, overhead = sys.argv[1:6]
 assets = f"{repo}/assets/sentry"
 os.makedirs(out, exist_ok=True)
 dev = yaml.safe_load(open(f"{assets}/devices.yaml"))
 dev["plugins"] = [os.path.normpath(os.path.join(assets, p)) for p in dev.get("plugins", [])]
-dev["devices"] = [d for d in dev["devices"] if d.get("type") != "arducam"]
+if no_arducam == "1":
+    dev["devices"] = [d for d in dev["devices"] if d.get("type") != "arducam"]
 yaml.safe_dump(dev, open(f"{out}/devices.yaml", "w"), sort_keys=False)
 sim = yaml.safe_load(open(f"{assets}/sim.yaml"))
 for k in ("urdf", "arow", "achilles_config"):
@@ -137,7 +143,16 @@ for k in ("urdf", "arow", "achilles_config"):
 model = f"{out}/achilles"
 shutil.copytree(os.path.dirname(sim["models"]["arow"]), model)
 arow = os.path.join(model, os.path.basename(sim["models"]["arow"]))
-text = open(arow).read().replace("  - parts/arducam_image.arow\n", "").replace("- parts/arducam_image.arow\n", "")
+text = open(arow).read()
+if no_arducam == "1":
+    text = text.replace("  - parts/arducam_image.arow\n", "").replace("- parts/arducam_image.arow\n", "")
+if overhead == "1":
+    shutil.copy(f"{assets}/overhead_view.arow", f"{model}/parts/overhead_view.arow")
+    head, sep, rest = text.partition("includes:\n")
+    indent = rest[:len(rest) - len(rest.lstrip(" "))]
+    text = head + sep + f"{indent}- parts/overhead_view.arow\n" + rest
+    sim["windows"] = [{"sensor": "overhead_view", "view": "image", "title": "Field (overhead)"}] + \
+        list(sim.get("windows") or [])
 open(arow, "w").write(text)
 sim["models"]["arow"] = arow
 yaml.safe_dump(sim, open(f"{out}/sim.yaml", "w"), sort_keys=False)
