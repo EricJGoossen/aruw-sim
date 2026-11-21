@@ -11,7 +11,10 @@ on the MCB-otto link. For each run it prints:
   floor (ramps), tipped, or came within a chassis radius of a wall;
 - the MCB's odometry against truth: position and heading error over time,
   and drift per metre travelled -- otto places everything (its lidar map,
-  its paths) with this odometry;
+  its paths) with this odometry. Its "chassis" is the turret major's pose
+  (SentryTransformAdapter::getVisionWorldToChassis), so the heading is
+  checked against the chassis's yaw plus joint_major's angle (sim.yaml
+  truth_log encoders: [major_yaw_encoder]) when the log has it;
 - path following: how far the true chassis is from otto's latest
   auto_nav_setpoint path (cross-track error), and which destinations it
   reached (within 0.25 m).
@@ -138,13 +141,16 @@ def analyse(run):
         tr = truth_at(t)
         e = math.hypot(ch[0] - tr["x"], ch[1] - tr["y"])
         perr.append(e)
-        yerr.append(abs(wrap(ch[5] - tr["yaw"])))
+        yerr.append(abs(wrap(ch[5] - tr["yaw"] - tr.get("encoders", {}).get("major_yaw_encoder", 0.0))))
         series.append((t, e))
     res.update(odo_n=len(odo), odo_err_final=perr[-1] if perr else float("nan"),
                odo_err_max=max(perr) if perr else float("nan"),
                odo_yaw_err_max_deg=math.degrees(max(yerr)) if yerr else float("nan"),
+               odo_yaw_err_median_deg=math.degrees(percentile(yerr, 50)) if yerr else float("nan"),
+               odo_yaw_vs="turret major" if "encoders" in truth[0] else "chassis",
                odo_drift_per_m=(perr[-1] / dist) if perr and dist > 0.5 else float("nan"),
-               odo_err_at=[(t, e) for t, e in series if abs(t - round(t / 20) * 20) < 0.003][:7])
+               odo_err_at=list({round(t / 20) * 20: e for t, e in reversed(series)
+                                if abs(t - round(t / 20) * 20) < 0.003}.items())[::-1][:7])
 
     # -- path following
     paths = [(r["t"], r["msg"]["points"], r["msg"].get("speed")) for r in vision
@@ -168,6 +174,7 @@ def analyse(run):
         if not dests or dests[-1] != dest:
             dests.append(dest)
     res.update(paths=len(paths), destinations=dests, reached=[d for d in dests if d in reached],
+               n_dest=len(set(dests)), n_reached=len(reached),
                cross_median=percentile(cross, 50), cross_p95=percentile(cross, 95),
                cross_max=max(cross) if cross else float("nan"))
     return res
@@ -185,14 +192,16 @@ ROWS = [
     ("MCB odometry messages", "odo_n", "{}"),
     ("odometry error at the end (m)", "odo_err_final", "{:.3f}"),
     ("odometry error, worst (m)", "odo_err_max", "{:.3f}"),
+    ("odometry heading checked against", "odo_yaw_vs", "{}"),
+    ("odometry heading error, median (deg)", "odo_yaw_err_median_deg", "{:.2f}"),
     ("odometry heading error, worst (deg)", "odo_yaw_err_max_deg", "{:.2f}"),
     ("odometry drift per metre driven", "odo_drift_per_m", "{:.1%}"),
     ("auto-nav paths sent", "paths", "{}"),
     ("cross-track error, median (m)", "cross_median", "{:.3f}"),
     ("cross-track error, 95th pct (m)", "cross_p95", "{:.3f}"),
     ("cross-track error, worst (m)", "cross_max", "{:.3f}"),
-    ("destinations (in order)", "destinations", "{}"),
-    ("destinations reached", "reached", "{}"),
+    ("distinct destinations", "n_dest", "{}"),
+    ("destinations reached", "n_reached", "{}"),
 ]
 
 

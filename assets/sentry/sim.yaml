@@ -29,6 +29,10 @@ status_period: 0
 truth_log:
   period: 0.01
   body: {achilles: sentry/floating_base, mujoco: base_footprint}
+  # joint_major's angle: otto's "chassis" odometry is the turret major's
+  # pose (SentryTransformAdapter::getVisionWorldToChassis), so its true yaw
+  # is the chassis's plus this.
+  encoders: [major_yaw_encoder]
 # The windows run.sh --window opens; headless, the hub ignores them. Each is
 # a sensor's view (view: image or depth for a camera, lidar for a lidar, plot
 # for a reading or a motor), and each costs the hub time on every draw. The
