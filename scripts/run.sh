@@ -192,7 +192,8 @@ for f in "$HUB" "$ELF" "$OV/bin/python"; do
   [ -e "$f" ] || { echo "run.sh: $f is missing; run scripts/build.sh" >&2; exit 1; }
 done
 
-rm -rf "$RT"
+# Emptied, not removed: outside the checkout it's the container's mount point.
+mkdir -p "$RT" && find "$RT" -mindepth 1 -delete
 mkdir -p "$RT/logs" "$RT/gaps"
 # The model's gaps (the doctor's, and Achilles's converters') are this run's too.
 {
@@ -444,6 +445,7 @@ PY
             --network host --ipc host -v /dev/pts:/dev/pts -v "$repo:$repo" -e HWEMU_RUNTIME_DIR="$RT"
             -e HWEMU_ODIN_SEED="${HWEMU_ODIN_SEED:-1}" -e HWEMU_ODIN_WRONG_FIX="${HWEMU_ODIN_WRONG_FIX:-}"
             -e HWEMU_ODIN_FIRST_FIX_S="${HWEMU_ODIN_FIRST_FIX_S:-}")
+    case "$RT/" in "$repo"/*) ;; *) an_run+=(-v "$RT:$RT") ;; esac
     start ros "${an_run[@]}" --name "aruw-sim-ros-$$" -e HWEMU_PROCESS=ros "$AN_IMAGE" \
       bash "$repo/tools/autonav/ros_side.sh" "$RT" "$AN_WS"
     env_flags=()
