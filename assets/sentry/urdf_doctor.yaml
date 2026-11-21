@@ -117,6 +117,22 @@ visual_overrides:
     rgba: [0.75, 0.75, 0.75, 1.0]
     source: approximation (the launcher's CAD isn't in the primitives URDF)
 
+# Collision shapes replacing the primitives URDF's, for Achilles (MuJoCo
+# collides with the coarse URDF's convex hulls themselves). Each replaces
+# its link's collision shapes.
+collision_overrides:
+  base_link:
+    # Fitted to the chassis hull (meshes/collision/chassis.stl): a tapered
+    # octagon, 585 mm across the flats at its widest with its corners cut,
+    # narrowing toward the top. The URDF's box is the full 585 mm square
+    # 160 mm tall, so its corners stuck out ~12 cm and it missed the top
+    # 70 mm. Two octagonal layers, from the hull's sections at z = 0.05 and
+    # 0.15 (base_link frame): half-widths in x and y, and |x| + |y| <= chamfer.
+    octagon_layers:
+      - {z: [-0.025, 0.09], half: [0.28, 0.282], chamfer: 0.40}
+      - {z: [0.09, 0.196], half: [0.248, 0.256], chamfer: 0.35}
+    source: fitted to chassis.stl (z -0.034 to 0.196; the underside's 25 mm chamfer below z = -0.01 is left square)
+
 # Omni wheels: the vendored wheels are solid, so each gets passive rollers
 # around its rim (two staggered rows, so one is always in contact), and the
 # wheel's own collision shape is removed: the rollers are what touch the floor.

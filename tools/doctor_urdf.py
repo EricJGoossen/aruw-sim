@@ -91,6 +91,32 @@ def box_geom(parent, tag, size, xyz=(0, 0, 0), rpy=(0, 0, 0), rgba=None, name=No
     return g
 
 
+def octagon_boxes(layer):
+    """An octagonal prism -- |x| <= hx, |y| <= hy, |x| + |y| <= chamfer, z in
+    [z0, z1] -- as six boxes: two crossing ones for the flats, and one per
+    cut corner, turned 45 degrees, covering the triangle the crossing ones
+    leave there. (size, xyz, rpy) each."""
+    hx, hy = layer["half"]
+    c = layer["chamfer"]
+    z0, z1 = layer["z"]
+    if not (max(hx, hy) < c < hx + hy):
+        raise SystemExit(f"doctor_urdf: octagon layer {layer}: needs max(half) < chamfer < sum(half)")
+    zc, h = (z0 + z1) / 2, z1 - z0
+    boxes = [([2 * hx, 2 * (c - hx), h], [0, 0, zc], [0, 0, 0]),
+             ([2 * (c - hy), 2 * hy, h], [0, 0, zc], [0, 0, 0])]
+    # The corner left uncovered: right angle at (c - hy, c - hx), hypotenuse
+    # the chamfer from (hx, c - hx) to (c - hy, hy).
+    length = math.hypot(hx - (c - hy), hy - (c - hx))
+    depth = (c - ((c - hy) + (c - hx))) / math.sqrt(2)
+    mid = [(hx + c - hy) / 2, (c - hx + hy) / 2]
+    for sx in (1, -1):
+        for sy in (1, -1):
+            n = [sx / math.sqrt(2), sy / math.sqrt(2)]
+            centre = [sx * mid[0] - n[0] * depth / 2, sy * mid[1] - n[1] * depth / 2, zc]
+            boxes.append(([depth, length, h], centre, [0, 0, math.atan2(sy, sx)]))
+    return boxes
+
+
 RAMP_THICKNESS = 0.04  # the slab a ramp is modelled as; its top face is the slope
 
 
@@ -248,6 +274,13 @@ def doctor(spec: dict, spec_dir: str, variant: str, out_dir: str) -> str:
                 sub(mat, "color", rgba=colors[mat.get("name")])
     if dropped:
         gap(f"{variant}: the vendored CAD visual meshes are not rendered; cameras see collision shapes")
+    for name, o in (spec.get("collision_overrides", {}) if variant == "achilles" else {}).items():
+        link = need_link(name, f"collision override {name}")
+        for c in link.findall("collision"):
+            link.remove(c)
+        for i, layer in enumerate(o["octagon_layers"]):
+            for k, (size, xyz, rpy) in enumerate(octagon_boxes(layer)):
+                box_geom(link, "collision", size, xyz=xyz, rpy=rpy, name=f"{name}_fit{i}_{k}")
     for name, o in (spec.get("visual_overrides", {}) if variant == "achilles" else {}).items():
         link = need_link(name, f"visual override {name}")
         for v in link.findall("visual"):
